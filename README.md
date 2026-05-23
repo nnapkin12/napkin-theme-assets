@@ -1,0 +1,1 @@
+This is compiled assets i use for kirka.io and other games, i didnot create anything inside of this, they are all copied from discord, and other websites. just putting them here for permalinks and also storage.
