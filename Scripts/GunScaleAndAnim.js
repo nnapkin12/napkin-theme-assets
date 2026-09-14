@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name         NAP Gun Scale + Anim (Lite)
-// @version      1.3.6
-// @description  Gun scale modifier and weapon inspect animations. Ctrl+O menu.
-// @author       napkin
+// @version      1.4.4
+// @description  Gun scale modifier and weapon inspect animations CTRL+O to toggle menu
+// @author       napkin      KLKLYH
 // ==/UserScript==
 
 (function () {
     'use strict';
 
-    const VERSION = '1.3.6';
+    const VERSION = '1.4.4';
     const TAB_STORAGE_KEY = 'nap-gsa-tab';
     const WEAPON_SCALE_KEY = 'kirka-weapon-scale';
     const WEAPON_SCALE_ENABLED_KEY = 'kirka-weapon-scale-enabled';
@@ -23,6 +23,7 @@
     const WEAPON_ANIM_ASSIGN_KEY = 'nap-weapon-anim-assign-v1';
     const GUNSCALE_CONFIGS_MAX = 20;
     const MENU_GHOST_KEY = 'nap-gsa-menu-ghost';
+    const MENU_MOTION_MS = 160;
 
     const WEAPON_REGISTRY = {
         bayonet: { label: 'Bayonet', tab: 'melee' },
@@ -38,25 +39,12 @@
         revolver: { label: 'Revolver', tab: 'guns' },
     };
 
-    const WEAPON_DISPLAY_MAP = {
-        Bayonet: 'Bayonet',
-        Tomahawk: 'Tomahawk',
-        LAR: 'LAR',
-        'AR-9': 'AR-9',
-        Weatie: 'Wheatie',
-        Wheatie: 'Wheatie',
-        'MAC-10': 'Mac-10',
-        'Mac-10': 'Mac-10',
-        Scar: 'Scar',
-        Vita: 'Vita',
-        Shark: 'Shark',
-        M60: 'M60',
-        Revolver: 'Revolver',
+    /* HUD strings that still do not match a registry id/label after normalize. */
+    const HUD_WEAPON_ALIASES = {
+        weatie: 'wheatie',
     };
 
-    /* Melee keeps fixed butterfly. All other guns cycle among three kinds. */
-    const INSPECT_ANIM_MELEE_BUTTERFLY = ['bayonet', 'tomahawk'];
-    const INSPECT_ANIM_EXCLUDED = [];
+    /* Melee inspect is butterfly. Guns cycle cowboy / clockwise / nudgeCcw. */
     const ANIM_CYCLE = ['cowboy', 'clockwise', 'nudgeCcw'];
     const ANIM_KIND_SHORT = { cowboy: 'c', clockwise: 'w', nudgeCcw: 'n' };
     const ANIM_KIND_FROM_SHORT = { c: 'cowboy', w: 'clockwise', n: 'nudgeCcw' };
@@ -78,39 +66,38 @@
         { kind: 'nudgeCcw', title: 'Nudge and counterclockwise:' },
     ];
 
-    /*
-     * Nudge + counterclockwise: same 720ms easeOutCubic as clockwise (but opposite spin),
-     * with a smooth outward float still in the bottom viewmodel HUD.
-     */
+    const GUN_INSPECT_MS = 720;
+    /* Nudge + counterclockwise: same duration as clockwise, opposite spin, plus a small outward float. */
     const PRESENT_OUT_DELTA = { x: -0.03, y: 0.04, z: 0.055 };
-    const PRESENT_OUT_DURATION_MS = 720;
 
-    const MELEE_WEAPON_KEYS = new Set(['Bayonet', 'Tomahawk']);
-    const WEAPON_ANIM_EXCLUDED_MELEE = new Set(
-        INSPECT_ANIM_EXCLUDED.map(function (id) { return WEAPON_REGISTRY[id].label; })
-    );
-    const INSPECT_ANIM_MELEE_BUTTERFLY_LABELS = new Set(
-        INSPECT_ANIM_MELEE_BUTTERFLY.map(function (id) { return WEAPON_REGISTRY[id].label; })
-    );
+    function normalizeWeaponKey(raw) {
+        if (!raw) return null;
+        return String(raw).trim().toLowerCase().replace(/[\s\-_]/g, '');
+    }
 
-    const DOM_WEAPON_NAME_TO_ID = {
-        bayonet: 'bayonet',
-        tomahawk: 'tomahawk',
-        lar: 'lar',
-        ar9: 'ar9',
-        weatie: 'wheatie',
-        wheatie: 'wheatie',
-        mac10: 'mac10',
-        scar: 'scar',
-        vita: 'vita',
-        shark: 'shark',
-        m60: 'm60',
-        revolver: 'revolver',
-    };
+    const HUD_WEAPON_ID_BY_KEY = (function () {
+        const map = Object.create(null);
+        function add(key, id) {
+            const n = normalizeWeaponKey(key);
+            if (n) map[n] = id;
+        }
+        for (const id in WEAPON_REGISTRY) {
+            add(id, id);
+            add(WEAPON_REGISTRY[id].label, id);
+        }
+        for (const alias in HUD_WEAPON_ALIASES) add(alias, HUD_WEAPON_ALIASES[alias]);
+        return map;
+    })();
 
-    const GEAR_ICON_SVG = '<svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true"><path fill="currentColor" d="M19.14 12.94c.04-.31.06-.63.06-.94 0-.31-.02-.63-.06-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.506.506 0 0 0-.5-.42h-3.84c-.25 0-.46.18-.5.42l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.25.42.5.42h3.84c.25 0 .46-.18.5-.42l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6A3.6 3.6 0 1 1 12 8.4a3.6 3.6 0 0 1 0 7.2z"/></svg>';
-    const ANIM_ICON_SVG = '<svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true"><path fill="currentColor" d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46A7.93 7.93 0 0 0 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74A7.93 7.93 0 0 0 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/></svg>';
+    function resolveWeaponIdFromHudName(raw) {
+        const key = normalizeWeaponKey(raw);
+        return (key && HUD_WEAPON_ID_BY_KEY[key]) || null;
+    }
 
+    const GEAR_ICON_SVG = '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M19.14 12.94c.04-.31.06-.63.06-.94 0-.31-.02-.63-.06-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.506.506 0 0 0-.5-.42h-3.84c-.25 0-.46.18-.5.42l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.25.42.5.42h3.84c.25 0 .46-.18.5-.42l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6A3.6 3.6 0 1 1 12 8.4a3.6 3.6 0 0 1 0 7.2z"/></svg>';
+    const ANIM_ICON_SVG = '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46A7.93 7.93 0 0 0 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74A7.93 7.93 0 0 0 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/></svg>';
+
+    /* --- storage --- */
     function getStorageBool(key, fallback) {
         try {
             const saved = localStorage.getItem(key);
@@ -174,6 +161,7 @@
             const saved = localStorage.getItem(WEAPON_ANIM_INSPECT_KEY);
             const key = saved ? String(saved).toLowerCase() : WEAPON_ANIM_INSPECT_KEY_DEFAULT;
             if (key === 'x') {
+                /* Old default collided with other binds. */
                 localStorage.setItem(WEAPON_ANIM_INSPECT_KEY, WEAPON_ANIM_INSPECT_KEY_DEFAULT);
                 return WEAPON_ANIM_INSPECT_KEY_DEFAULT;
             }
@@ -186,6 +174,7 @@
     let gunScaleConfigs = {};
     let activeGunScaleConfigId = null;
     let menuHost = null;
+    let menuCloseTimer = 0;
     let menuGhostBtn = null;
     let menuGhostBg = getStorageBool(MENU_GHOST_KEY, false);
     let activeMenuTab = 'gunscale';
@@ -193,7 +182,6 @@
     let gunScaleEnableBtn = null;
     let gunScaleSaveBtn = null;
     let gunScaleResetBtn = null;
-    let gunScalePanelEl = null;
     let gunScaleSliderRows = null;
     let gunScaleConfigListEl = null;
     let gunScaleNamePromptEl = null;
@@ -206,19 +194,20 @@
     /* id -> kind only when different from DEFAULT_WEAPON_ANIM_ASSIGN */
     let weaponAnimAssignOverrides = {};
 
+    /* --- inspect --- */
     const weaponAnimState = {
         active: false,
         mode: null,
         angle: 0,
         presentBlend: 0,
         gunStartTime: 0,
-        gunDuration: 720,
+        gunDuration: GUN_INSPECT_MS,
         gunTotalRotation: Math.PI * 2,
         meleeVelocity: 0,
         lastUpdate: 0,
         rafId: null,
-        cachedDisplayName: null,
         cachedWeaponId: null,
+        cachedSpinAxis: 'localY',
     };
 
     function easeOutCubic(t) {
@@ -231,11 +220,28 @@
         weaponAnimState.meleeVelocity = 0;
     }
 
+    function stopWeaponAnim() {
+        const wasActive = weaponAnimState.active || !!weaponAnimState.rafId;
+        stopWeaponAnimTicker();
+        weaponAnimState.active = false;
+        weaponAnimState.mode = null;
+        weaponAnimState.cachedWeaponId = null;
+        resetWeaponAnimMotion();
+        if (wasActive) refreshBridgeHandlers();
+    }
+
+    /* --- webgl --- */
     const gunScaleScratchMatrix = new Float32Array(16);
     const weaponAnimScratchMatrix = new Float32Array(16);
     let spectatingCached = false;
     let domHeldWeaponId = null;
-    let domWeaponObserver = null;
+    let heldHudNameThisRead = null;
+    let heldIsMelee = false;
+    let heldIsTomahawk = false;
+    let gunScaleModsActive = false;
+    let weaponContPollId = 0;
+    let persistGunScaleTimer = 0;
+    let bridgeMatrixHooked = false;
 
     const hookedGlEntries = [];
     const glToEntry = new WeakMap();
@@ -243,20 +249,28 @@
 
     function needsGunScaleMods() {
         if (!weaponScaleEnabled) return false;
-        return normalizeWeaponScale(weaponScale) !== 1
-            || normalizeWeaponOffset(weaponOffsetX) !== 0
-            || normalizeWeaponOffset(weaponOffsetY) !== 0
-            || normalizeWeaponOffset(weaponOffsetZ) !== 0;
+        return weaponScale !== 1
+            || weaponOffsetX !== 0
+            || weaponOffsetY !== 0
+            || weaponOffsetZ !== 0;
+    }
+
+    function syncGunScaleModsFlag() {
+        gunScaleModsActive = needsGunScaleMods();
     }
 
     function persistGunScaleSettings() {
-        try {
-            localStorage.setItem(WEAPON_SCALE_ENABLED_KEY, String(!!weaponScaleEnabled));
-            localStorage.setItem(WEAPON_SCALE_KEY, String(weaponScale));
-            localStorage.setItem(WEAPON_OFFSET_X_KEY, String(weaponOffsetX));
-            localStorage.setItem(WEAPON_OFFSET_Y_KEY, String(weaponOffsetY));
-            localStorage.setItem(WEAPON_OFFSET_Z_KEY, String(weaponOffsetZ));
-        } catch (_) {}
+        if (persistGunScaleTimer) clearTimeout(persistGunScaleTimer);
+        persistGunScaleTimer = setTimeout(function () {
+            persistGunScaleTimer = 0;
+            try {
+                localStorage.setItem(WEAPON_SCALE_ENABLED_KEY, String(!!weaponScaleEnabled));
+                localStorage.setItem(WEAPON_SCALE_KEY, String(weaponScale));
+                localStorage.setItem(WEAPON_OFFSET_X_KEY, String(weaponOffsetX));
+                localStorage.setItem(WEAPON_OFFSET_Y_KEY, String(weaponOffsetY));
+                localStorage.setItem(WEAPON_OFFSET_Z_KEY, String(weaponOffsetZ));
+            } catch (_) {}
+        }, 200);
     }
 
     function applyGunScaleSettings() {
@@ -265,37 +279,17 @@
         weaponOffsetY = normalizeWeaponOffset(weaponOffsetY);
         weaponOffsetZ = normalizeWeaponOffset(weaponOffsetZ);
         persistGunScaleSettings();
-        refreshBridgeHandlers();
+        const wasActive = gunScaleModsActive;
+        syncGunScaleModsFlag();
+        if (wasActive !== gunScaleModsActive) refreshBridgeHandlers();
     }
 
     function setWeaponScaleEnabled(enabled) {
         weaponScaleEnabled = !!enabled;
         persistGunScaleSettings();
+        syncGunScaleModsFlag();
+        syncWeaponPoll();
         refreshBridgeHandlers();
-    }
-
-    function resolveWeaponInternalName(displayName) {
-        if (!displayName) return null;
-        const trimmed = displayName.trim();
-        if (WEAPON_DISPLAY_MAP[trimmed]) return WEAPON_DISPLAY_MAP[trimmed];
-        const lower = trimmed.toLowerCase();
-        for (const key in WEAPON_DISPLAY_MAP) {
-            if (key.toLowerCase() === lower) return WEAPON_DISPLAY_MAP[key];
-        }
-        for (const weaponId in WEAPON_REGISTRY) {
-            if (WEAPON_REGISTRY[weaponId].label.toLowerCase() === lower) {
-                return WEAPON_REGISTRY[weaponId].label;
-            }
-        }
-        return trimmed;
-    }
-
-    function getWeaponIdFromInternalName(internalName) {
-        if (!internalName) return null;
-        for (const weaponId in WEAPON_REGISTRY) {
-            if (WEAPON_REGISTRY[weaponId].label === internalName) return weaponId;
-        }
-        return null;
     }
 
     function isMeleeWeaponId(weaponId) {
@@ -378,17 +372,6 @@
         return 'worldY';
     }
 
-    function getSpinStyleForWeapon(displayName) {
-        const weaponId = weaponAnimState.cachedWeaponId
-            || getWeaponIdFromInternalName(resolveWeaponInternalName(displayName));
-        return getSpinStyleForWeaponId(weaponId);
-    }
-
-    function normalizeDomWeaponName(raw) {
-        if (!raw) return null;
-        return raw.trim().toLowerCase().replace(/[\s\-_]/g, '');
-    }
-
     function readSelectedWeaponNameFromDom() {
         const selected = document.querySelector('.weapon-cont .bottom.is-selected');
         if (!selected) return null;
@@ -397,49 +380,35 @@
         return nameEl && nameEl.textContent ? nameEl.textContent.trim() : null;
     }
 
-    function readSelectedWeaponIdFromDom() {
+    function syncHeldWeaponFromHud() {
         const name = readSelectedWeaponNameFromDom();
-        if (!name) return null;
-        const normalized = normalizeDomWeaponName(name);
-        if (normalized && DOM_WEAPON_NAME_TO_ID[normalized]) return DOM_WEAPON_NAME_TO_ID[normalized];
-        return getWeaponIdFromInternalName(resolveWeaponInternalName(name));
+        heldHudNameThisRead = name;
+        if (name) domHeldWeaponId = resolveWeaponIdFromHudName(name);
+        heldIsMelee = !!(domHeldWeaponId && isMeleeWeaponId(domHeldWeaponId));
+        heldIsTomahawk = domHeldWeaponId === 'tomahawk';
     }
 
-    function updateDomHeldWeaponId() {
-        const id = readSelectedWeaponIdFromDom();
-        if (id) domHeldWeaponId = id;
+    function inspectShouldCancelForHeldWeapon() {
+        if (!weaponAnimState.active || !weaponAnimState.cachedWeaponId) return false;
+        if (domHeldWeaponId && domHeldWeaponId !== weaponAnimState.cachedWeaponId) return true;
+        /* HUD shows a name we do not know — treat as swapped off the inspect gun. */
+        if (!domHeldWeaponId && heldHudNameThisRead) return true;
+        return false;
     }
 
     function initDomWeaponTracker() {
-        updateDomHeldWeaponId();
-        if (domWeaponObserver || !document.body) return;
-        domWeaponObserver = new MutationObserver(function () {
-            updateDomHeldWeaponId();
-        });
-        domWeaponObserver.observe(document.body, {
-            attributes: true,
-            attributeFilter: ['class'],
-            childList: true,
-            subtree: true,
-        });
+        syncHeldWeaponFromHud();
+        syncWeaponPoll();
     }
 
-    function getHeldWeaponContext() {
-        updateDomHeldWeaponId();
-        if (domHeldWeaponId && WEAPON_REGISTRY[domHeldWeaponId]) {
-            return { weaponId: domHeldWeaponId, displayName: WEAPON_REGISTRY[domHeldWeaponId].label };
+    function syncWeaponPoll() {
+        const need = weaponScaleEnabled || weaponAnimEnabled;
+        if (need && !weaponContPollId) {
+            weaponContPollId = setInterval(syncHeldWeaponFromHud, 120);
+        } else if (!need && weaponContPollId) {
+            clearInterval(weaponContPollId);
+            weaponContPollId = 0;
         }
-        const displayName = readSelectedWeaponNameFromDom();
-        if (displayName) {
-            const internalName = resolveWeaponInternalName(displayName);
-            const weaponId = getWeaponIdFromInternalName(internalName);
-            if (weaponId) return { weaponId: weaponId, displayName: internalName };
-        }
-        return { weaponId: null, displayName: null };
-    }
-
-    function isTomahawkHeld() {
-        return domHeldWeaponId === 'tomahawk';
     }
 
     function columnLength3(m, i) {
@@ -450,12 +419,13 @@
         if (!m || m.length < 16) return null;
         if (Math.abs(m[3]) > 0.001 || Math.abs(m[7]) > 0.001 || Math.abs(m[11]) > 0.001) return null;
         if (Math.abs(m[15] - 1.0) > 0.001) return null;
+        /* Distance first — world matrices fail here without 3 column sqrts. */
+        const dist2 = m[12] * m[12] + m[13] * m[13] + m[14] * m[14];
+        if (dist2 < 1e-6 || dist2 > 0.36) return null;
         const sx = columnLength3(m, 0);
         const sy = columnLength3(m, 4);
         const sz = columnLength3(m, 8);
         if (sx < 0.001 || sx > 15.0 || sy < 0.001 || sy > 15.0 || sz < 0.001 || sz > 15.0) return null;
-        const distance = Math.sqrt(m[12] * m[12] + m[13] * m[13] + m[14] * m[14]);
-        if (distance < 0.001 || distance > 0.6) return null;
         const maxScale = Math.max(sx, sy, sz);
         if (maxScale < 1.7) return 'weapon';
         return maxScale / Math.min(sx, sy, sz) < 1.05 ? 'weapon' : 'arms';
@@ -465,23 +435,21 @@
         if (!m || m.length < 16) return false;
         if (Math.abs(m[3]) > 0.001 || Math.abs(m[7]) > 0.001 || Math.abs(m[11]) > 0.001) return false;
         if (Math.abs(m[15] - 1.0) > 0.001) return false;
-        const distance = Math.sqrt(m[12] * m[12] + m[13] * m[13] + m[14] * m[14]);
-        return distance >= 0.001 && distance <= 0.6;
+        const dist2 = m[12] * m[12] + m[13] * m[13] + m[14] * m[14];
+        return dist2 >= 1e-6 && dist2 <= 0.36;
     }
 
-    function getMatrixScaleSignature(m) {
-        if (!m || m.length < 16) return null;
-        return columnLength3(m, 0).toFixed(2) + ',' + columnLength3(m, 4).toFixed(2) + ',' + columnLength3(m, 8).toFixed(2);
+    function isTomahawkArmScale(m) {
+        if (!m || m.length < 16) return false;
+        return Math.abs(columnLength3(m, 0) - 1.54) < 0.005
+            && Math.abs(columnLength3(m, 4) - 0.92) < 0.005
+            && Math.abs(columnLength3(m, 8) - 2.24) < 0.005;
     }
 
-    function shouldApplyViewmodelMods(kind, vm, slice) {
+    function shouldApplyViewmodelMods(kind, slice) {
         if (kind === 'weapon') return true;
-        const held = getHeldWeaponContext();
-        if (kind === 'arms' && held.weaponId && isMeleeWeaponId(held.weaponId)) return true;
-        if (vm && vm.inViewmodelPass && isTomahawkHeld()) {
-            if (kind === 'weapon' || kind === 'arms') return true;
-            if (isViewmodelMatrix(slice)) return true;
-        }
+        if (kind === 'arms' && heldIsMelee) return true;
+        if (heldIsTomahawk && isViewmodelMatrix(slice)) return true;
         return false;
     }
 
@@ -588,12 +556,16 @@
             resetWeaponAnimMotion();
             return;
         }
+        syncHeldWeaponFromHud();
+        if (inspectShouldCancelForHeldWeapon()) {
+            stopWeaponAnim();
+            return;
+        }
         if (weaponAnimState.mode === 'gun') {
             const elapsed = now - weaponAnimState.gunStartTime;
             const t = Math.min(1, elapsed / weaponAnimState.gunDuration);
             if (t >= 1) {
-                weaponAnimState.active = false;
-                resetWeaponAnimMotion();
+                stopWeaponAnim();
                 return;
             }
             weaponAnimState.presentBlend = 0;
@@ -602,11 +574,9 @@
             const elapsed = now - weaponAnimState.gunStartTime;
             const t = Math.min(1, elapsed / weaponAnimState.gunDuration);
             if (t >= 1) {
-                weaponAnimState.active = false;
-                resetWeaponAnimMotion();
+                stopWeaponAnim();
                 return;
             }
-            /* Same easing as clockwise, opposite direction. */
             weaponAnimState.angle = -weaponAnimState.gunTotalRotation * easeOutCubic(t);
             weaponAnimState.presentBlend = Math.sin(Math.PI * t);
         } else if (weaponAnimState.mode === 'melee') {
@@ -617,36 +587,27 @@
             weaponAnimState.angle += weaponAnimState.meleeVelocity * dt;
             weaponAnimState.meleeVelocity *= Math.pow(0.015, dt);
             if (weaponAnimState.meleeVelocity < 0.35) {
-                weaponAnimState.active = false;
-                resetWeaponAnimMotion();
+                stopWeaponAnim();
                 return;
             }
         } else {
-            weaponAnimState.active = false;
-            resetWeaponAnimMotion();
+            stopWeaponAnim();
             return;
         }
         weaponAnimState.rafId = requestAnimationFrame(tickWeaponAnimFrame);
     }
 
-    function startWeaponAnimTicker() {
-        if (!weaponAnimState.rafId) {
-            weaponAnimState.rafId = requestAnimationFrame(tickWeaponAnimFrame);
-        }
-    }
-
     function triggerWeaponAnimInspect() {
-        const held = getHeldWeaponContext();
-        if (!held.displayName) return false;
-        const internalName = resolveWeaponInternalName(held.displayName);
-        if (WEAPON_ANIM_EXCLUDED_MELEE.has(internalName)) return false;
+        syncHeldWeaponFromHud();
+        const weaponId = domHeldWeaponId;
+        if (!weaponId || !WEAPON_REGISTRY[weaponId]) return false;
 
-        const isMelee = INSPECT_ANIM_MELEE_BUTTERFLY_LABELS.has(internalName);
+        const isMelee = isMeleeWeaponId(weaponId);
         const now = performance.now();
         weaponAnimState.active = true;
         weaponAnimState.lastUpdate = now;
-        weaponAnimState.cachedDisplayName = held.displayName;
-        weaponAnimState.cachedWeaponId = getWeaponIdFromInternalName(internalName);
+        weaponAnimState.cachedWeaponId = weaponId;
+        weaponAnimState.cachedSpinAxis = getSpinStyleForWeaponId(weaponId);
 
         if (isMelee) {
             weaponAnimState.mode = 'melee';
@@ -655,23 +616,24 @@
                 weaponAnimState.meleeVelocity + Math.PI * 6,
                 Math.PI * 24
             );
-        } else if (getWeaponAnimKind(weaponAnimState.cachedWeaponId) === 'nudgeCcw') {
+        } else if (getWeaponAnimKind(weaponId) === 'nudgeCcw') {
             weaponAnimState.mode = 'gunNudgeCcw';
             weaponAnimState.gunStartTime = now;
-            weaponAnimState.gunDuration = PRESENT_OUT_DURATION_MS;
+            weaponAnimState.gunDuration = GUN_INSPECT_MS;
             weaponAnimState.meleeVelocity = 0;
             weaponAnimState.angle = 0;
             weaponAnimState.presentBlend = 0;
         } else {
             weaponAnimState.mode = 'gun';
             weaponAnimState.gunStartTime = now;
-            weaponAnimState.gunDuration = 720;
+            weaponAnimState.gunDuration = GUN_INSPECT_MS;
             weaponAnimState.meleeVelocity = 0;
             weaponAnimState.angle = 0;
             weaponAnimState.presentBlend = 0;
         }
 
-        startWeaponAnimTicker();
+        refreshBridgeHandlers();
+        stopWeaponAnimTicker();
         tickWeaponAnimFrame(now);
         return true;
     }
@@ -680,15 +642,12 @@
         weaponAnimEnabled = !!enabled;
         setStorageBool(WEAPON_ANIM_ENABLED_KEY, weaponAnimEnabled);
         if (!weaponAnimEnabled) {
-            stopWeaponAnimTicker();
-            weaponAnimState.active = false;
-            weaponAnimState.mode = null;
-            resetWeaponAnimMotion();
-            weaponAnimState.cachedDisplayName = null;
-            weaponAnimState.cachedWeaponId = null;
+            stopWeaponAnim();
+            weaponAnimState.cachedSpinAxis = 'localY';
         }
         refreshBridgeHandlers();
         refreshWeaponAnimUi();
+        syncWeaponPoll();
     }
 
     function setWeaponAnimInspectKey(key) {
@@ -933,16 +892,15 @@
 
     function onUniformMatrix4fv(ctx) {
         if (spectatingCached) return;
-
-        const gunScaleMods = weaponScaleEnabled && needsGunScaleMods();
-        const hasAnim = weaponAnimEnabled && weaponAnimState.active;
-        if (!gunScaleMods && !hasAnim) return;
+        if (!gunScaleModsActive && !weaponAnimState.active) return;
 
         const gl = ctx.gl;
         if (!gl || !gl.canvas || gl.canvas.id !== 'game') return;
 
         const entry = glToEntry.get(gl);
-        const vm = entry ? entry.vm : null;
+        if (!entry || !entry.vm.inViewmodelPass) return;
+        const vm = entry.vm;
+
         const callArgs = ctx.args;
         const data = callArgs[2];
         if (!data || data.length < 16) return;
@@ -953,27 +911,22 @@
         else if (data.subarray) slice = data.subarray(srcOffset, srcOffset + 16);
         else slice = Array.prototype.slice.call(data, srcOffset, srcOffset + 16);
 
-        if (vm && vm.inViewmodelPass && isTomahawkHeld()) {
-            const sig = getMatrixScaleSignature(slice);
-            if (sig === '1.54,0.92,2.24') vm.tomahawkSigCount = (vm.tomahawkSigCount || 0) + 1;
+        if (heldIsTomahawk) {
+            if (isTomahawkArmScale(slice)) vm.tomahawkSigCount = (vm.tomahawkSigCount || 0) + 1;
         }
 
         let kind = classifyViewmodelMatrix(slice);
-        if (vm && vm.inViewmodelPass && isTomahawkHeld() && kind === 'weapon') {
-            const sig = getMatrixScaleSignature(slice);
-            if (sig === '1.54,0.92,2.24' && vm.tomahawkSigCount > 1) kind = 'arms';
+        if (heldIsTomahawk && kind === 'weapon') {
+            if (isTomahawkArmScale(slice) && vm.tomahawkSigCount > 1) kind = 'arms';
         }
 
-        const shouldModify = shouldApplyViewmodelMods(kind, vm, slice);
+        const shouldModify = gunScaleModsActive && shouldApplyViewmodelMods(kind, slice);
         let shouldAnimate = false;
-        if (hasAnim) {
-            const cachedInternal = resolveWeaponInternalName(weaponAnimState.cachedDisplayName);
-            if (!WEAPON_ANIM_EXCLUDED_MELEE.has(cachedInternal)) {
-                if ((weaponAnimState.mode === 'gun' || weaponAnimState.mode === 'gunNudgeCcw') && kind === 'weapon') {
-                    shouldAnimate = true;
-                } else if (weaponAnimState.mode === 'melee') {
-                    shouldAnimate = shouldModify || (vm && vm.inViewmodelPass && isViewmodelMatrix(slice));
-                }
+        if (weaponAnimState.active) {
+            if ((weaponAnimState.mode === 'gun' || weaponAnimState.mode === 'gunNudgeCcw') && kind === 'weapon') {
+                shouldAnimate = true;
+            } else if (weaponAnimState.mode === 'melee') {
+                shouldAnimate = shouldModify || isViewmodelMatrix(slice);
             }
         }
         if (!shouldModify && !shouldAnimate) return;
@@ -981,26 +934,21 @@
         let matrix = gunScaleScratchMatrix;
         matrix.set(slice);
 
-        if (gunScaleMods && shouldModify) {
-            const scale = normalizeWeaponScale(weaponScale);
-            const offsetX = normalizeWeaponOffset(weaponOffsetX);
-            const offsetY = normalizeWeaponOffset(weaponOffsetY);
-            const offsetZ = normalizeWeaponOffset(weaponOffsetZ);
-            if (scale !== 1 || offsetX !== 0 || offsetY !== 0 || offsetZ !== 0) {
+        if (shouldModify) {
+            const scale = weaponScale;
+            if (scale !== 1) {
                 matrix[0] *= scale; matrix[1] *= scale; matrix[2] *= scale;
                 matrix[4] *= scale; matrix[5] *= scale; matrix[6] *= scale;
                 matrix[8] *= scale; matrix[9] *= scale; matrix[10] *= scale;
-                matrix[12] += offsetX;
-                matrix[13] += offsetY;
-                matrix[14] += offsetZ;
             }
+            if (weaponOffsetX !== 0) matrix[12] += weaponOffsetX;
+            if (weaponOffsetY !== 0) matrix[13] += weaponOffsetY;
+            if (weaponOffsetZ !== 0) matrix[14] += weaponOffsetZ;
         }
 
-        if (hasAnim && shouldAnimate) {
+        if (shouldAnimate) {
             const isGunAnim = weaponAnimState.mode === 'gun' || weaponAnimState.mode === 'gunNudgeCcw';
-            const spinAxis = isGunAnim
-                ? getSpinStyleForWeapon(weaponAnimState.cachedDisplayName)
-                : 'localY';
+            const spinAxis = isGunAnim ? weaponAnimState.cachedSpinAxis : 'localY';
             applySpinToMatrix(matrix, weaponAnimScratchMatrix, weaponAnimState.angle, spinAxis);
             matrix = weaponAnimScratchMatrix;
             if (weaponAnimState.mode === 'gunNudgeCcw' && weaponAnimState.presentBlend > 0) {
@@ -1017,19 +965,23 @@
     function clearBridgeHandlers() {
         for (let i = 0; i < bridgeUnregisters.length; i += 1) bridgeUnregisters[i]();
         bridgeUnregisters = [];
+        bridgeMatrixHooked = false;
     }
 
     function refreshBridgeHandlers() {
         const bridge = window.__NAP_GL_BRIDGE__;
         if (!bridge) return;
-        clearBridgeHandlers();
 
-        const gunScaleMods = needsGunScaleMods();
-        const matrixHook = gunScaleMods || weaponAnimEnabled;
-        if (!matrixHook) {
-            resetAllViewmodelState();
+        /* Hook matrices only while scale is on or an inspect is playing — not for idle anim-enabled. */
+        const wantMatrix = gunScaleModsActive || weaponAnimState.active;
+        if (!wantMatrix) {
+            if (bridgeMatrixHooked || bridgeUnregisters.length) {
+                clearBridgeHandlers();
+                resetAllViewmodelState();
+            }
             return;
         }
+        if (bridgeMatrixHooked) return;
 
         function register(method, handler) {
             bridgeUnregisters.push(bridge.register(method, handler));
@@ -1037,6 +989,7 @@
 
         register('clear', onClear);
         register('uniformMatrix4fv', onUniformMatrix4fv);
+        bridgeMatrixHooked = true;
     }
 
     function onBridgeContext(gl, natives) {
@@ -1064,6 +1017,7 @@
         spectatingCached = !!document.querySelector('.infos .fps');
     }, 1000);
 
+    /* --- menu --- */
     function ensureMenuMounted() {
         if (!menuHost) return false;
         const root = document.documentElement || document.body;
@@ -1090,17 +1044,29 @@
 
     function setMenuOpen(open) {
         if (!ensureMenuMounted()) return;
+        if (menuCloseTimer) {
+            clearTimeout(menuCloseTimer);
+            menuCloseTimer = 0;
+        }
         if (open) {
+            menuHost.classList.remove('is-closing');
             menuHost.classList.add('is-open');
             applyMenuGhostUi();
         } else {
-            menuHost.classList.remove('is-open');
+            if (!menuHost.classList.contains('is-open')) return;
+            menuHost.classList.add('is-closing');
             hideGunScaleNamePrompt();
+            menuCloseTimer = setTimeout(function () {
+                menuCloseTimer = 0;
+                if (!menuHost) return;
+                menuHost.classList.remove('is-open');
+                menuHost.classList.remove('is-closing');
+            }, MENU_MOTION_MS);
         }
     }
 
     function isMenuOpen() {
-        return !!(menuHost && menuHost.classList.contains('is-open'));
+        return !!(menuHost && menuHost.classList.contains('is-open') && !menuHost.classList.contains('is-closing'));
     }
 
     function toggleMenu() {
@@ -1221,6 +1187,97 @@
         };
     }
 
+    function buildMenuCss() {
+        const t = (MENU_MOTION_MS / 1000).toFixed(2) + 's';
+        const motion = t + ' cubic-bezier(.22,.7,.3,1)';
+        return [
+            '#nap-gsa-host,#nap-gsa-host *{box-sizing:border-box!important;outline:none!important;-webkit-tap-highlight-color:transparent!important}',
+            '#nap-gsa-host{position:fixed!important;top:0!important;left:0!important;right:0!important;bottom:0!important;width:100%!important;height:100%!important;z-index:2147483646!important;display:none!important;align-items:center!important;justify-content:center!important;margin:0!important;padding:0!important;border:none!important;background:transparent!important;pointer-events:none!important}',
+            '#nap-gsa-host.is-open{display:flex!important;pointer-events:auto!important}',
+            '#nap-gsa-backdrop{position:absolute!important;top:0!important;left:0!important;right:0!important;bottom:0!important;z-index:0!important;background:transparent!important}',
+            '#nap-gsa-panel{position:relative!important;z-index:1!important;width:520px!important;max-width:calc(100vw - 32px)!important;max-height:84vh!important;display:flex!important;flex-direction:column!important;overflow:hidden!important;border-radius:12px!important;border:1px solid rgba(255,255,255,.14)!important;background:#000!important;box-shadow:0 12px 32px rgba(0,0,0,.55)!important;font:600 13px/1.35 Consolas,Monaco,monospace!important;color:#f2f2f2!important}',
+            '#nap-gsa-host.is-open #nap-gsa-panel{animation:nap-gsa-menu-in ' + motion + ' both}',
+            '#nap-gsa-host.is-open.is-closing #nap-gsa-panel{animation:nap-gsa-menu-out ' + motion + ' both}',
+            '@keyframes nap-gsa-menu-in{from{transform:translateY(8px) scale(.97);opacity:0}to{transform:none;opacity:1}}',
+            '@keyframes nap-gsa-menu-out{from{transform:none;opacity:1}to{transform:translateY(8px) scale(.97);opacity:0}}',
+            '.nap-gsa-close{position:absolute;top:6px;right:6px;z-index:5;width:24px;height:24px;border:none;border-radius:7px;background:rgba(255,255,255,.06);color:rgba(255,120,120,.85);font-size:18px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0}',
+            '.nap-gsa-close:hover{background:rgba(255,255,255,.1);color:#ff6b6b}',
+            '#nap-gsa-host.is-ghost #nap-gsa-panel{background:rgba(0,0,0,.12)!important;border-color:rgba(255,255,255,.16)!important;box-shadow:none!important}',
+            '#nap-gsa-host.is-ghost .nap-gsa-tabs,#nap-gsa-host.is-ghost .nap-gsa-body,#nap-gsa-host.is-ghost #nap-gsa-hint{background:transparent!important}',
+            '#nap-gsa-host.is-ghost .nap-gsa-tabs{border-right-color:rgba(255,255,255,.08)!important}',
+            '#nap-gsa-host.is-ghost #nap-gsa-hint{border-top-color:rgba(255,255,255,.08)!important}',
+            '#nap-gsa-host.is-ghost .nap-gsa-header{border-bottom-color:rgba(255,255,255,.08)!important}',
+            '#nap-gsa-host.is-ghost .nap-gsa-anim-key-block,#nap-gsa-host.is-ghost .nap-gsa-anim-section,#nap-gsa-host.is-ghost .nap-gsa-config-prompt{background:transparent!important;border-color:rgba(255,255,255,.08)!important}',
+            '#nap-gsa-host.is-ghost .nap-gsa-config-input{background:rgba(0,0,0,.2)!important}',
+            '#nap-gsa-host.is-ghost .nap-gsa-tab{background:rgba(255,255,255,.04)!important}',
+            '#nap-gsa-host.is-ghost .nap-gsa-tab.is-active{background:rgba(59,111,217,.22)!important}',
+            '.nap-gsa-layout{display:flex;flex:1 1 auto;min-height:0;overflow:hidden}',
+            '.nap-gsa-tabs{display:flex;flex-direction:column;gap:8px;padding:14px 10px;border-right:none;background:#000;flex-shrink:0}',
+            '.nap-gsa-tab{width:40px;height:40px;border:1px solid rgba(255,255,255,.14);border-radius:8px;background:rgba(255,255,255,.05);color:rgba(255,255,255,.6);cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0}',
+            '.nap-gsa-tab:hover{color:#fff;border-color:rgba(255,255,255,.28)}',
+            '.nap-gsa-tab.is-active{color:#fff;border-color:rgba(90,142,240,.75);background:rgba(59,111,217,.32)}',
+            '.nap-gsa-tab svg{display:block}',
+            '.nap-gsa-tab.nap-gsa-tab-spin svg{animation:nap-gsa-icon-spin .35s cubic-bezier(.2,.8,.2,1)}',
+            '@keyframes nap-gsa-icon-spin{0%{transform:rotate(0deg) scale(.92)}100%{transform:rotate(360deg) scale(1)}}',
+            '.nap-gsa-body{flex:1 1 auto;padding:16px 18px 12px;min-width:0;min-height:0;overflow:auto;background:#000}',
+            '.nap-gsa-panel-pane{display:none}',
+            '.nap-gsa-panel-pane.is-active{display:block}',
+            '.nap-gsa-header{margin:0 0 8px;padding:0 22px 8px 0;border-bottom:1px solid rgba(255,255,255,.1)}',
+            '.nap-gsa-title{margin:0 0 3px;font-size:14px;letter-spacing:.08em;text-transform:uppercase;color:#fff;font-weight:700;line-height:1.2}',
+            '.nap-gsa-desc{margin:0;font-size:12px;font-weight:500;color:rgba(255,255,255,.55);line-height:1.35}',
+            '.nap-gsa-enable-btn{border:1px solid transparent;border-radius:7px;padding:5px 10px;cursor:pointer;font:inherit;font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;flex-shrink:0;min-width:72px}',
+            '.nap-gsa-enable-btn:not(.is-on){color:#fff;background:linear-gradient(180deg,#5a8ef0,#3b6fd9);border-color:rgba(90,142,240,.55)}',
+            '.nap-gsa-enable-btn.is-on{color:#fff;background:linear-gradient(180deg,#f87171,#dc2626);border-color:rgba(248,113,113,.5)}',
+            '.nap-gsa-feature-toggle{display:flex;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;gap:8px 10px;margin:0 0 8px;width:100%}',
+            '.nap-gsa-feature-toggle-group{display:flex;flex-direction:column;align-items:flex-start;gap:4px}',
+            '.nap-gsa-ghost-card{display:flex;flex-direction:column;align-items:stretch;gap:4px;margin-left:auto;padding:6px 8px;border-radius:8px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.03);min-width:118px}',
+            '.nap-gsa-ghost-card-title{margin:0;font-size:9px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:rgba(255,255,255,.7);line-height:1.25}',
+            '.nap-gsa-ghost-card .nap-gsa-enable-btn{width:100%}',
+            '#nap-gsa-host.is-ghost .nap-gsa-ghost-card{background:rgba(255,255,255,.04)!important;border-color:rgba(255,255,255,.18)!important}',
+            '.nap-gsa-slider-row{display:flex;align-items:center;gap:8px;margin-bottom:8px}',
+            '.nap-gsa-row-label{font-size:12px;color:rgba(255,255,255,.75);flex-shrink:0;min-width:64px}',
+            '.nap-gsa-slider-wrap{flex:1;height:22px;display:flex;align-items:center;padding:0 2px}',
+            '.nap-gsa-slider-wrap input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:22px;margin:0;background:transparent;cursor:pointer;--pct:50%}',
+            '.nap-gsa-slider-wrap input[type=range]::-webkit-slider-runnable-track{height:5px;border-radius:999px;background:linear-gradient(90deg,#4d85e6 var(--pct),rgba(255,255,255,.14) var(--pct))}',
+            '.nap-gsa-slider-wrap input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:13px;height:13px;margin-top:-4px;border-radius:50%;border:2px solid #fff;background:#3b6fd9}',
+            '.nap-gsa-slider-wrap input[type=range]::-moz-range-track{height:5px;border-radius:999px;background:rgba(255,255,255,.14)}',
+            '.nap-gsa-slider-wrap input[type=range]::-moz-range-progress{height:5px;border-radius:999px;background:#4d85e6}',
+            '.nap-gsa-slider-wrap input[type=range]::-moz-range-thumb{width:13px;height:13px;border-radius:50%;border:2px solid #fff;background:#3b6fd9}',
+            '.nap-gsa-slider-val{min-width:44px;text-align:right;font-size:11px;color:rgba(255,255,255,.82)}',
+            '.nap-gsa-slider-val.is-placeholder{color:rgba(255,255,255,.35)}',
+            '.nap-gsa-action-row{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 8px}',
+            '.nap-gsa-btn{border:1px solid rgba(255,255,255,.14);border-radius:7px;padding:5px 10px;cursor:pointer;font:inherit;font-size:11px;font-weight:650}',
+            '.nap-gsa-btn-reset{color:#fff;background:linear-gradient(180deg,#f87171,#dc2626);border-color:rgba(248,113,113,.45)}',
+            '.nap-gsa-btn-save.is-save-ready{color:#fff;background:linear-gradient(180deg,#5a8ef0,#3b6fd9);border-color:rgba(90,142,240,.55)}',
+            '.nap-gsa-btn-save.is-save-locked,.nap-gsa-btn-save:disabled{color:rgba(255,255,255,.4);background:rgba(255,255,255,.06);border-color:rgba(255,255,255,.1);cursor:not-allowed;opacity:.72}',
+            '.nap-gsa-config-prompt{display:none;margin-bottom:8px;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04)}',
+            '.nap-gsa-config-input{width:100%;box-sizing:border-box;margin-bottom:6px;padding:6px 8px;border-radius:7px;border:1px solid rgba(255,255,255,.16);background:rgba(0,0,0,.55);color:#f2f2f2;font:inherit}',
+            '.nap-gsa-config-list{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;align-items:center}',
+            '.nap-gsa-config-item{display:inline-flex;align-items:center;border:1px solid rgba(255,255,255,.16);border-radius:7px;background:rgba(255,255,255,.05);overflow:hidden;max-width:100%}',
+            '.nap-gsa-config-item.is-on{border-color:#5a8ef0;background:#3b6fd9}',
+            '.nap-gsa-config-remove{display:none;align-items:center;justify-content:center;width:22px;height:26px;margin:0;padding:0;border:none;border-right:1px solid rgba(248,113,113,.35);cursor:pointer;flex-shrink:0;font:inherit;font-size:14px;font-weight:700;line-height:1;color:#f87171;background:rgba(127,29,29,.35)}',
+            '.nap-gsa-config-item:hover .nap-gsa-config-remove{display:inline-flex}',
+            '.nap-gsa-config-remove:hover{color:#fecaca;background:rgba(220,38,38,.55)}',
+            '.nap-gsa-config-btn{border:none;padding:5px 8px;cursor:pointer;color:rgba(255,255,255,.76);background:transparent;font:inherit;font-size:11px}',
+            '.nap-gsa-config-item.is-on .nap-gsa-config-btn{color:#fff}',
+            '.nap-gsa-config-empty{width:100%;font-size:11px;color:rgba(255,255,255,.36)}',
+            '.nap-gsa-sub{display:none}.nap-gsa-sub.is-visible{display:block}',
+            '.nap-gsa-anim-key-block{margin:0 0 8px;padding:8px 10px;border-radius:8px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.03)}',
+            '.nap-gsa-anim-key-row{display:flex;align-items:center;gap:8px;font-size:11px;color:rgba(255,255,255,.62);margin-bottom:3px}',
+            '.nap-gsa-anim-key-input{width:34px;height:26px;border:1px solid rgba(255,255,255,.18);border-radius:7px;background:rgba(255,255,255,.06);color:rgba(255,255,255,.94);font:inherit;font-size:12px;font-weight:700;text-align:center;text-transform:uppercase}',
+            '.nap-gsa-anim-key-input.is-listening{border-color:rgba(250,204,21,.85);background:rgba(250,204,21,.1);color:#fde68a}',
+            '.nap-gsa-anim-key-meta{margin:0 0 4px;font-size:9px;letter-spacing:.06em;text-transform:uppercase;color:rgba(255,255,255,.34)}',
+            '.nap-gsa-anim-key-meta.is-listening{color:#fbbf24}',
+            '.nap-gsa-anim-key-hint,.nap-gsa-anim-lists-tip{margin:0;font-size:10px;line-height:1.4;color:rgba(255,255,255,.42)}',
+            '.nap-gsa-anim-section{margin-bottom:6px;padding:6px 8px;border-radius:8px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.03)}',
+            '.nap-gsa-anim-section-title{margin-bottom:4px;font-size:10px;letter-spacing:.04em;color:rgba(255,255,255,.6)}',
+            '.nap-gsa-anim-weapons{display:flex;flex-wrap:wrap;gap:3px 10px}',
+            '.nap-gsa-anim-weapon{font-size:11px;color:rgba(255,255,255,.78);cursor:context-menu;user-select:none}',
+            '.nap-gsa-anim-lists-tip{margin:4px 0 0}',
+            '#nap-gsa-hint{margin:0;padding:8px 14px 12px;font-size:11px;color:rgba(255,255,255,.38);text-align:right;border-top:none;background:#000;flex-shrink:0}',
+        ].join('');
+    }
+
     function createTabHeader(titleText, descText) {
         const header = document.createElement('div');
         header.className = 'nap-gsa-header';
@@ -1269,95 +1326,7 @@
 
         const style = document.createElement('style');
         style.id = 'nap-gsa-styles';
-        style.textContent = [
-            '#nap-gsa-host,#nap-gsa-host *{box-sizing:border-box!important;outline:none!important;-webkit-tap-highlight-color:transparent!important}',
-            '#nap-gsa-host{position:fixed!important;top:0!important;left:0!important;right:0!important;bottom:0!important;width:100%!important;height:100%!important;margin:0!important;padding:0!important;border:none!important;z-index:2147483646!important;display:none!important;pointer-events:none!important;background:transparent!important}',
-            '#nap-gsa-host.is-open{display:block!important;pointer-events:auto!important}',
-            '#nap-gsa-backdrop{position:fixed!important;top:0!important;left:0!important;right:0!important;bottom:0!important;width:100%!important;height:100%!important;z-index:0!important;background:rgba(4,6,14,.78)!important;pointer-events:auto!important}',
-            '#nap-gsa-panel{position:fixed!important;top:20px!important;left:20px!important;right:20px!important;bottom:20px!important;width:auto!important;height:auto!important;max-width:none!important;max-height:none!important;z-index:1!important;border-radius:18px!important;border:1px solid rgba(255,255,255,.16)!important;background:#121624!important;box-shadow:0 28px 80px rgba(0,0,0,.75)!important;font:600 17px/1.4 Consolas,Monaco,monospace!important;color:#e8ecff!important;overflow:hidden!important;display:flex!important;flex-direction:column!important;pointer-events:auto!important;opacity:1!important;visibility:visible!important}',
-            '.nap-gsa-close{position:absolute;top:10px;right:12px;z-index:5;width:40px;height:40px;border:none;border-radius:10px;background:rgba(255,255,255,.06);color:rgba(255,120,120,.85);font-size:28px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0}',
-            '.nap-gsa-close:hover{background:rgba(255,255,255,.1);color:#ff6b6b}',
-            /* see-through: strip practically all solid panels */
-            '#nap-gsa-host.is-ghost #nap-gsa-backdrop{background:transparent!important}',
-            '#nap-gsa-host.is-ghost #nap-gsa-panel{background:rgba(18,22,36,.06)!important;border-color:rgba(255,255,255,.14)!important;box-shadow:none!important}',
-            '#nap-gsa-host.is-ghost .nap-gsa-tabs{background:transparent!important;border-right-color:rgba(255,255,255,.08)!important}',
-            '#nap-gsa-host.is-ghost .nap-gsa-body{background:transparent!important}',
-            '#nap-gsa-host.is-ghost #nap-gsa-hint{background:transparent!important;border-top-color:rgba(255,255,255,.08)!important}',
-            '#nap-gsa-host.is-ghost .nap-gsa-header{border-bottom-color:rgba(255,255,255,.08)!important}',
-            '#nap-gsa-host.is-ghost .nap-gsa-anim-key-block{background:transparent!important;border-color:rgba(255,255,255,.08)!important}',
-            '#nap-gsa-host.is-ghost .nap-gsa-anim-section{background:transparent!important;border-color:rgba(255,255,255,.08)!important}',
-            '#nap-gsa-host.is-ghost .nap-gsa-config-prompt{background:transparent!important;border-color:rgba(255,255,255,.1)!important}',
-            '#nap-gsa-host.is-ghost .nap-gsa-config-input{background:rgba(0,0,0,.2)!important}',
-            '#nap-gsa-host.is-ghost .nap-gsa-tab{background:rgba(255,255,255,.04)!important}',
-            '#nap-gsa-host.is-ghost .nap-gsa-tab.is-active{background:rgba(59,111,217,.22)!important}',
-            '.nap-gsa-layout{display:flex;flex:1;min-height:0;height:100%}',
-            '.nap-gsa-tabs{display:flex;flex-direction:column;gap:12px;padding:28px 16px;border-right:1px solid rgba(255,255,255,.1);background:#0c101c;flex-shrink:0}',
-            '.nap-gsa-tab{width:64px;height:64px;border:1px solid rgba(255,255,255,.14);border-radius:12px;background:rgba(255,255,255,.05);color:rgba(255,255,255,.6);cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;transition:border-color .2s ease,background .2s ease,color .2s ease,transform .2s ease}',
-            '.nap-gsa-tab:hover{color:#fff;border-color:rgba(255,255,255,.28);transform:translateY(-1px)}',
-            '.nap-gsa-tab.is-active{color:#fff;border-color:rgba(90,142,240,.75);background:rgba(59,111,217,.32)}',
-            '.nap-gsa-tab svg{display:block;transition:transform .35s ease}',
-            '.nap-gsa-tab.nap-gsa-tab-spin svg{animation:nap-gsa-icon-spin .48s cubic-bezier(.2,.8,.2,1)}',
-            '@keyframes nap-gsa-icon-spin{0%{transform:rotate(0deg) scale(.88)}60%{transform:rotate(320deg) scale(1.08)}100%{transform:rotate(360deg) scale(1)}}',
-            '.nap-gsa-body{flex:1;padding:28px 32px 18px;position:relative;min-width:0;min-height:0;background:#121624}',
-            '.nap-gsa-panel-pane{position:absolute;top:28px;left:32px;right:32px;bottom:18px;overflow-y:auto;padding-right:8px;opacity:0;visibility:hidden;pointer-events:none;transform:translateY(10px);transition:opacity .24s ease,transform .24s ease,visibility .24s}',
-            '.nap-gsa-panel-pane.is-active{opacity:1;visibility:visible;pointer-events:auto;transform:translateY(0)}',
-            '.nap-gsa-header{display:flex;flex-direction:column;justify-content:flex-start;min-height:112px;margin:0 0 22px;padding:0 40px 18px 0;border-bottom:1px solid rgba(255,255,255,.1);box-sizing:border-box}',
-            '.nap-gsa-title{margin:0 0 10px;font-size:28px;letter-spacing:.12em;text-transform:uppercase;color:rgba(255,255,255,.9);font-weight:700;line-height:1.15}',
-            '.nap-gsa-desc{margin:0;font-size:16px;font-weight:500;color:rgba(255,255,255,.55);line-height:1.5;max-width:62ch}',
-            '.nap-gsa-enable-btn{border:1px solid transparent;border-radius:10px;padding:9px 16px;cursor:pointer;font:inherit;font-size:13px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;flex-shrink:0;min-width:104px;transition:background .15s ease,border-color .15s ease,box-shadow .15s ease,transform .12s ease}',
-            '.nap-gsa-enable-btn:hover{transform:translateY(-1px)}',
-            '.nap-gsa-enable-btn:not(.is-on){color:#fff;background:linear-gradient(180deg,#5a8ef0,#3b6fd9);border-color:rgba(90,142,240,.55);box-shadow:0 6px 18px rgba(59,111,217,.28)}',
-            '.nap-gsa-enable-btn.is-on{color:#fff;background:linear-gradient(180deg,#f87171,#dc2626);border-color:rgba(248,113,113,.5);box-shadow:0 6px 18px rgba(220,38,38,.22)}',
-            '.nap-gsa-enable-inline{margin-left:auto}',
-            '.nap-gsa-feature-toggle{display:flex;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;gap:16px 24px;margin:0 0 18px;width:100%}',
-            '.nap-gsa-feature-toggle-group{display:flex;flex-direction:column;align-items:flex-start;gap:8px}',
-            '.nap-gsa-ghost-card{display:flex;flex-direction:column;align-items:stretch;gap:10px;margin-left:auto;padding:12px 14px 14px;border-radius:12px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.03);min-width:168px;box-shadow:inset 0 1px 0 rgba(255,255,255,.04)}',
-            '.nap-gsa-ghost-card-title{margin:0;font-size:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:rgba(255,255,255,.72);line-height:1.25}',
-            '.nap-gsa-ghost-card .nap-gsa-enable-btn{width:100%}',
-            '#nap-gsa-host.is-ghost .nap-gsa-ghost-card{background:rgba(255,255,255,.04)!important;border-color:rgba(255,255,255,.18)!important}',
-            '.nap-gsa-slider-row{display:flex;align-items:center;gap:16px;margin-bottom:16px}',
-            '.nap-gsa-row-label{font-size:16px;color:rgba(255,255,255,.72);flex-shrink:0;min-width:92px}',
-            '.nap-gsa-slider-wrap{flex:1;height:40px;display:flex;align-items:center;padding:0 12px;overflow:visible}',
-            '.nap-gsa-slider-wrap input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:40px;margin:0;background:transparent;cursor:pointer;--pct:50%}',
-            '.nap-gsa-slider-wrap input[type=range]::-webkit-slider-runnable-track{height:10px;border-radius:999px;background:linear-gradient(90deg,#4d85e6 var(--pct),rgba(255,255,255,.14) var(--pct))}',
-            '.nap-gsa-slider-wrap input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:22px;height:22px;margin-top:-6px;border-radius:50%;border:2px solid #fff;background:#3b6fd9;box-shadow:0 1px 6px rgba(0,0,0,.45)}',
-            '.nap-gsa-slider-wrap input[type=range]::-moz-range-track{height:10px;border-radius:999px;background:rgba(255,255,255,.14)}',
-            '.nap-gsa-slider-wrap input[type=range]::-moz-range-progress{height:10px;border-radius:999px;background:#4d85e6}',
-            '.nap-gsa-slider-wrap input[type=range]::-moz-range-thumb{width:22px;height:22px;border-radius:50%;border:2px solid #fff;background:#3b6fd9;box-shadow:0 1px 6px rgba(0,0,0,.45)}',
-            '.nap-gsa-slider-val{min-width:72px;text-align:right;font-size:16px;color:rgba(255,255,255,.82)}',
-            '.nap-gsa-slider-val.is-placeholder{color:rgba(255,255,255,.35)}',
-            '.nap-gsa-action-row{display:flex;flex-wrap:wrap;gap:12px;margin:10px 0 16px}',
-            '.nap-gsa-btn{border:1px solid rgba(255,255,255,.14);border-radius:10px;padding:10px 16px;cursor:pointer;font:inherit;font-size:14px;font-weight:650;letter-spacing:.03em;transition:background .15s ease,border-color .15s ease,opacity .15s ease,transform .12s ease}',
-            '.nap-gsa-btn:hover:not(:disabled){transform:translateY(-1px)}',
-            '.nap-gsa-btn-reset{color:#fff;background:linear-gradient(180deg,#f87171,#dc2626);border-color:rgba(248,113,113,.45);box-shadow:0 6px 16px rgba(220,38,38,.18)}',
-            '.nap-gsa-btn-save.is-save-ready{color:#fff;background:linear-gradient(180deg,#5a8ef0,#3b6fd9);border-color:rgba(90,142,240,.55);box-shadow:0 6px 16px rgba(59,111,217,.26)}',
-            '.nap-gsa-btn-save.is-save-locked,.nap-gsa-btn-save:disabled{color:rgba(255,255,255,.4);background:rgba(255,255,255,.06);border-color:rgba(255,255,255,.1);box-shadow:none;cursor:not-allowed;opacity:.72}',
-            '.nap-gsa-config-prompt{display:none;margin-bottom:14px;padding:14px;border-radius:12px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04)}',
-            '.nap-gsa-config-input{width:100%;box-sizing:border-box;margin-bottom:10px;padding:10px 12px;border-radius:10px;border:1px solid rgba(255,255,255,.16);background:rgba(0,0,0,.4);color:#e8ecff;font:inherit}',
-            '.nap-gsa-config-list{display:flex;flex-wrap:wrap;gap:10px;margin-top:10px;align-items:center}',
-            '.nap-gsa-config-item{display:inline-flex;align-items:center;border:1px solid rgba(255,255,255,.16);border-radius:10px;background:rgba(255,255,255,.05);overflow:hidden;max-width:100%}',
-            '.nap-gsa-config-item.is-on{border-color:#5a8ef0;background:#3b6fd9}',
-            '.nap-gsa-config-remove{display:none;align-items:center;justify-content:center;width:28px;height:36px;margin:0;padding:0;border:none;border-right:1px solid rgba(248,113,113,.35);border-radius:0;cursor:pointer;flex-shrink:0;font:inherit;font-size:18px;font-weight:700;line-height:1;color:#f87171;background:rgba(127,29,29,.35)}',
-            '.nap-gsa-config-item:hover .nap-gsa-config-remove{display:inline-flex}',
-            '.nap-gsa-config-remove:hover{color:#fecaca;background:rgba(220,38,38,.55)}',
-            '.nap-gsa-config-btn{border:none;border-radius:0;padding:8px 14px;cursor:pointer;color:rgba(255,255,255,.76);background:transparent;font:inherit;font-size:14px}',
-            '.nap-gsa-config-item.is-on .nap-gsa-config-btn{color:#fff}',
-            '.nap-gsa-config-empty{width:100%;font-size:14px;color:rgba(255,255,255,.36)}',
-            '.nap-gsa-sub{display:none}.nap-gsa-sub.is-visible{display:block}',
-            '.nap-gsa-anim-key-block{margin:0 0 20px;padding:14px 16px;border-radius:12px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.03)}',
-            '.nap-gsa-anim-key-row{display:flex;align-items:center;gap:12px;font-size:15px;color:rgba(255,255,255,.62);margin-bottom:6px}',
-            '.nap-gsa-anim-key-label{flex-shrink:0}',
-            '.nap-gsa-anim-key-input{width:48px;height:38px;border:1px solid rgba(255,255,255,.18);border-radius:10px;background:rgba(255,255,255,.06);color:rgba(255,255,255,.94);font:inherit;font-size:16px;font-weight:700;text-align:center;text-transform:uppercase;transition:border-color .15s ease,box-shadow .15s ease,background .15s ease}',
-            '.nap-gsa-anim-key-input.is-listening{border-color:rgba(250,204,21,.85);background:rgba(250,204,21,.1);box-shadow:0 0 0 3px rgba(250,204,21,.18),0 0 18px rgba(250,204,21,.22);color:#fde68a}',
-            '.nap-gsa-anim-key-meta{margin:0 0 8px;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:rgba(255,255,255,.34)}',
-            '.nap-gsa-anim-key-meta.is-listening{color:#fbbf24}',
-            '.nap-gsa-anim-key-hint{margin:0;font-size:13px;line-height:1.5;color:rgba(255,255,255,.42);max-width:64ch}',
-            '.nap-gsa-anim-section{margin-bottom:14px;padding:12px 14px;border-radius:12px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.03)}',
-            '.nap-gsa-anim-section-title{margin-bottom:8px;font-size:14px;letter-spacing:.04em;color:rgba(255,255,255,.6)}',
-            '.nap-gsa-anim-weapons{display:flex;flex-wrap:wrap;gap:6px 18px}',
-            '.nap-gsa-anim-weapon{font-size:15px;color:rgba(255,255,255,.78);cursor:context-menu;user-select:none;padding:2px 2px}.nap-gsa-anim-lists-tip{margin:8px 0 0;font-size:13px;line-height:1.5;color:rgba(255,255,255,.42);max-width:64ch}',
-            '#nap-gsa-hint{margin:0;padding:14px 24px 18px;font-size:14px;color:rgba(255,255,255,.32);text-align:right;border-top:1px solid rgba(255,255,255,.08);background:#0c101c;flex-shrink:0}',
-        ].join('');
+        style.textContent = buildMenuCss();
         (document.documentElement || document.head || document.body).appendChild(style);
 
         menuHost = document.createElement('div');
@@ -1376,8 +1345,6 @@
         closeBtn.addEventListener('click', function () { setMenuOpen(false); });
 
         const layout = document.createElement('div');
-
-
         layout.className = 'nap-gsa-layout';
 
         const tabRail = document.createElement('div');
@@ -1410,11 +1377,10 @@
         const gunScalePanel = document.createElement('div');
         gunScalePanel.className = 'nap-gsa-panel-pane';
         gunScalePanel.dataset.panel = 'gunscale';
-        gunScalePanelEl = gunScalePanel;
 
         gunScalePanel.appendChild(createTabHeader(
             'gun scale',
-            'Custom gun size, and position on your screen. transparent backround optional, to see your gun as you edit, you can also save your selected values as named presets, up to 20'
+            'Size and position. Ghost lets you see the gun while you edit.'
         ));
 
         const gunScaleToggleRow = document.createElement('div');
@@ -1555,7 +1521,7 @@
 
         animPanel.appendChild(createTabHeader(
             'weapon animation',
-            'Custom inspect animations on your weapons.'
+            'Right-click a gun to cycle its inspect style.'
         ));
 
         const animToggleRow = document.createElement('div');
@@ -1655,7 +1621,7 @@
 
         const hint = document.createElement('div');
         hint.id = 'nap-gsa-hint';
-        hint.textContent = 'ctrl+o · esc to close';
+        hint.textContent = 'ctrl+o(or esc to close) · #KLKLYH';
         panel.appendChild(hint);
 
         menuHost.appendChild(backdrop);
@@ -1700,10 +1666,12 @@
         window.__napGsaHotkey = true;
     }
 
+    /* --- boot --- */
     function boot() {
         loadWeaponAnimAssign();
         initGunScaleConfigs();
         initDomWeaponTracker();
+        syncGunScaleModsFlag();
         buildMenu();
         bindHotkeys();
         bindWeaponAnimInspect();
