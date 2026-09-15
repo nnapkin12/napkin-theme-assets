@@ -1,0 +1,60 @@
+Model: driftremus
+Plate Style: 0
+Plate Text: 09ALO216
+Primary Colour: 30
+Secondary Colour: 30
+Pearl Colour: 30
+Wheel Colour: 6
+Wheel Type: 0
+Spoiler: 8
+Front Bumper: 5
+Rear Bumper: 3
+Sideskirt: 4
+Exhaust: 5
+Chassis: 5
+Grille: 5
+Hood: 9
+Fender: 1
+Right Fender: 0
+Roof: 1
+Engine: 4
+Brakes: 3
+Transmission: 3
+Horns: 54
+Suspension: 4
+Armor: 5
+Nitrous: No
+Turbo: Yes
+Subwoofer: No
+Tiresmoke: No
+Unk21: No
+Headlights: 0
+Front Wheels: 30
+Vanity Plates: 2
+Trim: 2
+Dashboard: 1
+Dial: 14
+Seats: 0
+Door Speaker: 14
+Steering Wheel: 7
+Trunk: 2
+Engine Block: 0
+Air Filter: 1
+Struts: 3
+Arch Cover: 1
+Trim2: 0
+Tank: 3
+Right Door: 0
+Livery: 7
+Tyre Smoke Colour: #ffffff
+Window Tint: 0
+Custom Primary Colour: #f9e4f1
+Custom Secondary Colour: #72d895
+Neon Colour: #000000
+Neon Front: Yes
+Neon Back: Yes
+Neon Left: Yes
+Neon Right: Yes
+Interior Colour: 8
+Dashboard Colour: 156
+Tyres Mode: 2

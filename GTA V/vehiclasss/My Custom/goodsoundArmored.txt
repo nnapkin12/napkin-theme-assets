@@ -1,0 +1,48 @@
+Model: zr3803
+Plate Style: 5
+Plate Text: NEED GAS
+Primary Colour: 145
+Secondary Colour: 145
+Pearl Colour: 129
+Wheel Colour: 118
+Wheel Type: 7
+Spoiler: 0
+Front Bumper: 0
+Rear Bumper: 0
+Exhaust: 0
+Chassis: 0
+Hood: 0
+Fender: 0
+Right Fender: 1
+Engine: 4
+Brakes: 3
+Transmission: 4
+Horns: 0
+Armor: 5
+Nitrous: No
+Turbo: Yes
+Subwoofer: No
+Tiresmoke: No
+Unk21: No
+Headlights: 0
+Front Wheels: 26
+Ornaments: 0
+Air Filter: 1
+Struts: 1
+Arch Cover: 0
+Aerials: 0
+Trim2: 0
+Tank: 0
+Livery: 0
+Tyre Smoke Colour: #ffffff
+Window Tint: 0
+Custom Primary Colour: 
+Custom Secondary Colour: 
+Neon Colour: #000000
+Neon Front: Yes
+Neon Back: Yes
+Neon Left: Yes
+Neon Right: Yes
+Interior Colour: 2
+Dashboard Colour: 156
+Tyres Mode: 2

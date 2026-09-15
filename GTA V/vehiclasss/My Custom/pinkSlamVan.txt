@@ -1,0 +1,56 @@
+Model: slamvan3
+Plate Style: 5
+Plate Text: SLAMMED 
+Primary Colour: 137
+Secondary Colour: 137
+Pearl Colour: 73
+Wheel Colour: 140
+Wheel Type: 1
+Spoiler: 0
+Front Bumper: 0
+Exhaust: 0
+Grille: 0
+Hood: 0
+Roof: 0
+Engine: 4
+Brakes: 3
+Transmission: 3
+Horns: 0
+Suspension: 0
+Armor: 5
+Nitrous: No
+Turbo: Yes
+Subwoofer: No
+Tiresmoke: No
+Unk21: No
+Headlights: 0
+Front Wheels: 0
+Back Wheels: 4
+Plate Holder: 0
+Vanity Plates: 0
+Trim: 0
+Ornaments: 0
+Dashboard: 0
+Dial: 0
+Door Speaker: 0
+Steering Wheel: 0
+Shifter Leavers: 0
+Plaques: 0
+Hydraulics: 0
+Engine Block: 0
+Air Filter: 0
+Tank: 0
+Left Door: 0
+Livery: 0
+Tyre Smoke Colour: #ffffff
+Window Tint: 4
+Custom Primary Colour: 
+Custom Secondary Colour: 
+Neon Colour: #000000
+Neon Front: Yes
+Neon Back: Yes
+Neon Left: Yes
+Neon Right: Yes
+Interior Colour: 26
+Dashboard Colour: 0
+Tyres Mode: 2

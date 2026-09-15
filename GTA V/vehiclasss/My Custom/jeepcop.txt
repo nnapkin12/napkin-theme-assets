@@ -1,0 +1,52 @@
+Model: polterminus
+Plate Style: 5
+Plate Text: 7NZUECAP
+Primary Colour: 104
+Secondary Colour: 121
+Pearl Colour: 11
+Wheel Colour: 52
+Wheel Type: 3
+Spoiler: 0
+Rear Bumper: 0
+Sideskirt: 0
+Exhaust: 0
+Chassis: 0
+Grille: 0
+Hood: 0
+Fender: 0
+Right Fender: 0
+Roof: 0
+Engine: 0
+Brakes: 0
+Transmission: 0
+Horns: 0
+Armor: 0
+Nitrous: No
+Turbo: No
+Subwoofer: No
+Tiresmoke: No
+Unk21: No
+Headlights: 0
+Front Wheels: 0
+Arch Cover: 0
+Aerials: 0
+Trim2: 0
+Left Door: 0
+Livery: 0
+Tyre Smoke Colour: #ffffff
+Window Tint: 0
+Custom Primary Colour: 
+Custom Secondary Colour: 
+Neon Colour: #ff00ff
+Neon Front: No
+Neon Back: No
+Neon Left: No
+Neon Right: No
+Interior Colour: 2
+Dashboard Colour: 0
+Tyres Mode: 2
+Extra 1: Yes
+Extra 2: No
+Extra 3: No
+Extra 4: No
+Extra 5: Yes

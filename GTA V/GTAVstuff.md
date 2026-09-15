@@ -12,7 +12,8 @@ GTA V Legacy (PC) story-mode Stand Lua. Natives `1663599433`. A lot of this is c
 DNR: **spawn DLC/Modded/Drift Vehicles, Vehicle Appearance features**
 
 - **Make this car drift** (`mptdrift`) — while sitting in a car, this either spawns to the drift model of your car if it has one, otherwise it puts drift tires on.
-- **Randomize appearance** (`mptrandlook`) / **Spec appearance** (`mptspeclook`) — fully randomize appearance of your vehicle vs matching colours / nicer rims / slammed street cars, also add liveries sometimes.
+- **Randomize appearance** (`mptrandlook`) - Fully randomize the appearance of your vehicle
+- **Spec appearance** (`mptspeclook`) — Smart randomize. matching colours / nicer rims / slammed street cars, lifted SUVs, also add liveries sometimes.
 - **Spawn 5 cars** (`mptspawn5`) — five random modded/DLC cars in a row, also lists the vehicle names in a toast. Next spawn only deletes cars still sitting there; if you sat in one or drove it off 5meters or over, it wont despawn.
 - **Spawn 5 cars DRIFT** (`mptspawndrift5`) — same as spawn 5 cars, drift models only, tires already on.
 - **Drift cars** (`mptdriftcars`) — Spawn vehicles from the full drift list for this game build.
@@ -35,7 +36,7 @@ DNR: **shaders, LOD, distance blur, shadows** — turn Enable on first.
 - **Keep HD models loaded** (`graphicfixhd`) — stops peds/cars swapping to low-detail as soon as they get a bit far.
 - **Turn off Lance God graphics** (`graphicfixfixlance`) — kills Lance's shader steal, then re-applies this tree if Enable is still on a personal feature i put cs.
 
-### [Real Names](IRLCarNames.lua)
+### [IRL Vehicle/Weapon Names](IRLCarNames.lua)
 
 ## Real Names
 

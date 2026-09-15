@@ -5,8 +5,9 @@
 This repo is compiled assets i use for kirka.io and other games, i didnot create a lot of the content inside of this, they are all copied from discord, and other websites. just putting them here for permalinks and also storage.
 
 
-[GTA V related](https://github.com/nnapkin12/napkin-theme-assets/blob/main/GTA%20V/GTAVstuff.md)
-[Miscellaneous](https://github.com/nnapkin12/napkin-theme-assets/tree/main/misc)
+## [GTA V Related/Mods](https://github.com/nnapkin12/napkin-theme-assets/blob/main/GTA%20V/GTAVstuff.md)
+
+## [Miscellaneous stuff](https://github.com/nnapkin12/napkin-theme-assets/tree/main/misc)
 
 
 

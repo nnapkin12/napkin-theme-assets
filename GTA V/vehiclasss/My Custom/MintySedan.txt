@@ -1,0 +1,45 @@
+Model: penumbra2
+Plate Style: 8
+Plate Text:  MINTY  
+Primary Colour: 0
+Secondary Colour: 0
+Pearl Colour: 159
+Wheel Colour: 46
+Wheel Type: 5
+Spoiler: 0
+Front Bumper: 4
+Rear Bumper: 1
+Sideskirt: 8
+Exhaust: 4
+Chassis: 11
+Grille: 10
+Hood: 1
+Fender: 0
+Right Fender: 1
+Roof: 3
+Engine: 4
+Brakes: 3
+Transmission: 3
+Horns: 0
+Suspension: 4
+Armor: 5
+Nitrous: No
+Turbo: Yes
+Subwoofer: No
+Tiresmoke: No
+Unk21: No
+Headlights: 0
+Front Wheels: 26
+Livery: 3
+Tyre Smoke Colour: #ffffff
+Window Tint: 2
+Custom Primary Colour: #24df78
+Custom Secondary Colour: #11b495
+Neon Colour: #000000
+Neon Front: Yes
+Neon Back: Yes
+Neon Left: Yes
+Neon Right: Yes
+Interior Colour: 0
+Dashboard Colour: 0
+Tyres Mode: 2

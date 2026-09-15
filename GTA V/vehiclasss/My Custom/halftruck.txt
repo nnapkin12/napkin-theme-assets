@@ -1,0 +1,46 @@
+Model: slamvan6
+Plate Style: 3
+Plate Text: NZRT4Z8H
+Primary Colour: 46
+Secondary Colour: 58
+Pearl Colour: 22
+Wheel Colour: 79
+Wheel Type: 0
+Spoiler: 0
+Rear Bumper: 0
+Chassis: 0
+Grille: 0
+Hood: 0
+Right Fender: 0
+Engine: 0
+Brakes: 0
+Transmission: 0
+Horns: 0
+Armor: 0
+Nitrous: No
+Turbo: Yes
+Subwoofer: No
+Tiresmoke: No
+Unk21: No
+Headlights: 0
+Front Wheels: 39
+Plaques: 0
+Air Filter: 0
+Struts: 0
+Arch Cover: 0
+Aerials: 0
+Trim2: 0
+Tank: 0
+Livery: 0
+Tyre Smoke Colour: #ffffff
+Window Tint: 0
+Custom Primary Colour: 
+Custom Secondary Colour: 
+Neon Colour: #ff00ff
+Neon Front: No
+Neon Back: No
+Neon Left: No
+Neon Right: No
+Interior Colour: 2
+Dashboard Colour: 156
+Tyres Mode: 2
