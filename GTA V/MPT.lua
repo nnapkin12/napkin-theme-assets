@@ -2,7 +2,9 @@
 -- Multi Purpose Tool for story-mode Stand.
 -- Natives are from natives-1663599433. Stand API only.
 --
--- Add new root sections the same way Vehicle is set up below.
+-- Add new root sections the same way Vehicle / World / Graphic FIX are set up below.
+-- any Stand commands wrapped with local buttons so the menu doesnt jump around.
+--
 
 util.require_natives(1663599433)
 
@@ -11,9 +13,15 @@ util.require_natives(1663599433)
 --==============================================================================
 
 local root = menu.my_root()
+-- Lineup entries: { ent, x, y }. Cars still near x,y get replaced.
+-- Cars you sat in or drove off are dropped from this list and left in the world.
 local spawned = {}
 local spot_pool = {}
 local drift_catalog = {}
+
+-- Horizontal metres from spawn point. Under this = still sitting in the row.
+local SITTING_RADIUS = 4.0
+local SITTING_RADIUS_SQ = SITTING_RADIUS * SITTING_RADIUS
 
 local ground_z = memory.alloc(4)
 local col_a = memory.alloc(4)
@@ -121,6 +129,37 @@ local STREET_PAINT = {
     {72, 78, 88}, {158, 158, 162}, {8, 26, 68}, {112, 42, 14}, {200, 198, 190},
     {64, 12, 16}, {36, 60, 48}, {24, 24, 28}, {180, 180, 184}, {120, 20, 28},
 }
+
+-- Coordinated looks for Spec appearance.
+-- paint: 0 normal, 1 metallic, 2 pearl, 3 matte, 4 metal, 5 chrome
+-- p / s / pearl / wheel are 0-159 colour indices. xenon 0-12. tint 1 black, 2 dark smoke, 5 limo.
+local SPEC_LOOKS = {
+    {paint = 1, p = 0,   s = 0,   pearl = 0,   wheel = 0,   xenon = 0,  tint = 1, smoke = {20, 20, 20}},
+    {paint = 3, p = 0,   s = 0,   pearl = 0,   wheel = 0,   xenon = 0,  tint = 1, smoke = {16, 16, 16}},
+    {paint = 1, p = 147, s = 0,   pearl = 0,   wheel = 0,   xenon = 0,  tint = 1, smoke = {18, 18, 18}},
+    {paint = 1, p = 111, s = 111, pearl = 112, wheel = 4,   xenon = 0,  tint = 2, smoke = {220, 220, 220}},
+    {paint = 1, p = 112, s = 111, pearl = 111, wheel = 0,   xenon = 0,  tint = 2, smoke = {210, 210, 210}},
+    {paint = 1, p = 4,   s = 0,   pearl = 111, wheel = 0,   xenon = 0,  tint = 1, smoke = {40, 40, 40}},
+    {paint = 1, p = 7,   s = 7,   pearl = 4,   wheel = 0,   xenon = 0,  tint = 1, smoke = {36, 36, 36}},
+    {paint = 1, p = 27,  s = 0,   pearl = 28,  wheel = 0,   xenon = 8,  tint = 1, smoke = {90, 8, 8}},
+    {paint = 1, p = 29,  s = 0,   pearl = 35,  wheel = 0,   xenon = 8,  tint = 1, smoke = {80, 10, 10}},
+    {paint = 1, p = 70,  s = 0,   pearl = 73,  wheel = 0,   xenon = 2,  tint = 1, smoke = {8, 16, 70}},
+    {paint = 1, p = 64,  s = 0,   pearl = 68,  wheel = 4,   xenon = 1,  tint = 2, smoke = {10, 20, 80}},
+    {paint = 1, p = 50,  s = 0,   pearl = 55,  wheel = 0,   xenon = 3,  tint = 1, smoke = {8, 40, 16}},
+    {paint = 1, p = 38,  s = 0,   pearl = 0,   wheel = 0,   xenon = 7,  tint = 1, smoke = {90, 40, 8}},
+    {paint = 1, p = 88,  s = 0,   pearl = 0,   wheel = 0,   xenon = 5,  tint = 1, smoke = {90, 80, 10}},
+    {paint = 1, p = 37,  s = 0,   pearl = 99,  wheel = 37,  xenon = 6,  tint = 2, smoke = {80, 60, 16}},
+    {paint = 1, p = 145, s = 0,   pearl = 71,  wheel = 0,   xenon = 11, tint = 1, smoke = {40, 8, 60}},
+    {paint = 1, p = 92,  s = 0,   pearl = 0,   wheel = 0,   xenon = 4,  tint = 1, smoke = {20, 80, 12}},
+    {paint = 2, p = 111, s = 4,   pearl = 0,   wheel = 0,   xenon = 0,  tint = 2, smoke = {200, 200, 200}},
+    {paint = 1, p = 28,  s = 0,   pearl = 111, wheel = 111, xenon = 8,  tint = 1, smoke = {70, 8, 8}},
+    {paint = 1, p = 0,   s = 27,  pearl = 0,   wheel = 0,   xenon = 8,  tint = 1, smoke = {24, 24, 24}},
+    {paint = 1, p = 0,   s = 4,   pearl = 0,   wheel = 4,   xenon = 0,  tint = 1, smoke = {20, 20, 20}},
+    {paint = 3, p = 111, s = 0,   pearl = 0,   wheel = 0,   xenon = 0,  tint = 1, smoke = {30, 30, 30}},
+}
+
+local BODY_MODS = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
+local COSMETIC_MODS = {25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 39, 40, 41, 42, 43, 44, 45, 46}
 
 --==============================================================================
 -- HELPERS
@@ -339,18 +378,19 @@ local function build_spot_pool()
     end
 end
 
-local function pick_spot_cars(count)
+local function pick_from_pool(pool, count)
     local picks = {}
     local used = {}
-    if #spot_pool == 0 then
+    if type(pool) ~= "table" or #pool == 0 or count < 1 then
         return picks
     end
-    for _ = 1, count * 8 do
+    local attempts = math.max(count * 8, #pool)
+    for _ = 1, attempts do
         if #picks >= count then
             break
         end
-        local info = spot_pool[math.random(1, #spot_pool)]
-        if not used[info.hash] then
+        local info = pool[math.random(1, #pool)]
+        if info and info.hash and not used[info.hash] then
             used[info.hash] = true
             picks[#picks + 1] = info
         end
@@ -388,11 +428,43 @@ local function dress_car(veh)
     end
 end
 
-local function clear_spawned()
+local function entry_ent(entry)
+    if type(entry) ~= "table" then
+        return 0
+    end
+    return entry.ent or 0
+end
+
+-- True if this lineup car should survive the next spawn: you are in it, or it left its slot.
+local function car_was_taken(entry)
+    local ent = entry_ent(entry)
+    if not exists(ent) then
+        return true
+    end
+    if PED.IS_PED_IN_VEHICLE(player_ped(), ent, false) then
+        return true
+    end
+    local pos = ENTITY.GET_ENTITY_COORDS(ent, true)
+    local dx = pos.x - entry.x
+    local dy = pos.y - entry.y
+    return (dx * dx + dy * dy) >= SITTING_RADIUS_SQ
+end
+
+-- Deletes cars still parked in the last row. Leaves taken cars in the world and forgets them.
+local function clear_sitting_lineup()
+    local kept = 0
     for i = 1, #spawned do
-        delete_ent(spawned[i])
+        local entry = spawned[i]
+        if car_was_taken(entry) then
+            if exists(entry_ent(entry)) then
+                kept = kept + 1
+            end
+        else
+            delete_ent(entry_ent(entry))
+        end
     end
     spawned = {}
+    return kept
 end
 
 local function release_ent(ent)
@@ -406,15 +478,21 @@ end
 
 local function release_spawned()
     for i = 1, #spawned do
-        release_ent(spawned[i])
+        release_ent(entry_ent(spawned[i]))
     end
     spawned = {}
 end
 
 local function remember(ent)
-    if exists(ent) then
-        spawned[#spawned + 1] = ent
+    if not exists(ent) then
+        return
     end
+    local pos = ENTITY.GET_ENTITY_COORDS(ent, true)
+    spawned[#spawned + 1] = {
+        ent = ent,
+        x = pos.x,
+        y = pos.y,
+    }
 end
 
 local function spawn_vehicle_in_front(hash, heading_offset, lateral, ahead)
@@ -436,18 +514,15 @@ local function spawn_vehicle_in_front(hash, heading_offset, lateral, ahead)
     return veh
 end
 
-local function spawn_lineup(count)
-    if #spot_pool == 0 then
-        build_spot_pool()
-    end
-    if #spot_pool == 0 then
-        util.toast("No spotting cars found")
+local function spawn_lineup(count, pool, empty_msg, toast_prefix, with_drift_tires)
+    if type(pool) ~= "table" or #pool == 0 then
+        util.toast(empty_msg or "No spotting cars found")
         return
     end
 
-    clear_spawned()
+    local kept = clear_sitting_lineup()
 
-    local picks = pick_spot_cars(count)
+    local picks = pick_from_pool(pool, count)
     local names = {}
     local mid = (count + 1) * 0.5
 
@@ -458,6 +533,9 @@ local function spawn_lineup(count)
             STREAMING.SET_MODEL_AS_NO_LONGER_NEEDED(info.hash)
             if exists(veh) then
                 dress_car(veh)
+                if with_drift_tires then
+                    apply_drift_tires(veh, false)
+                end
                 remember(veh)
                 names[#names + 1] = info.label
             end
@@ -471,7 +549,23 @@ local function spawn_lineup(count)
         util.toast("Spawn failed — try again")
         return
     end
-    util.toast("Spot: " .. table.concat(names, "  |  "))
+    local msg = (toast_prefix or "Spot: ") .. table.concat(names, "  |  ")
+    if kept > 0 then
+        msg = msg .. "  (kept " .. tostring(kept) .. " you took)"
+    end
+    util.toast(msg)
+end
+
+local function spawn_spot_lineup(count)
+    if #spot_pool == 0 then
+        build_spot_pool()
+    end
+    spawn_lineup(count, spot_pool, "No spotting cars found", "Spot: ", false)
+end
+
+local function spawn_drift_lineup(count)
+    -- Catalog is filled at load. Do not call build_drift_catalog here: it is a later local.
+    spawn_lineup(count, drift_catalog, "No drift cars found", "Drift: ", true)
 end
 
 --==============================================================================
@@ -602,29 +696,658 @@ local function make_current_car_drift()
 end
 
 --==============================================================================
+-- APPEARANCE
+--==============================================================================
+
+local function pick_one(list)
+    return list[math.random(1, #list)]
+end
+
+local function ensure_mod_kit(veh)
+    if VEHICLE.GET_NUM_MOD_KITS(veh) > 0 then
+        VEHICLE.SET_VEHICLE_MOD_KIT(veh, 0)
+        return true
+    end
+    return false
+end
+
+local function mod_count(veh, mod_type)
+    local n = VEHICLE.GET_NUM_VEHICLE_MODS(veh, mod_type)
+    if type(n) ~= "number" or n < 1 then
+        return 0
+    end
+    return n
+end
+
+-- prefer: "any" random, "max" last slot, "high" upper half (usually the fuller kits).
+local function pick_mod(veh, mod_type, prefer)
+    local n = mod_count(veh, mod_type)
+    if n < 1 then
+        return -1
+    end
+    local index
+    if prefer == "max" then
+        index = n - 1
+    elseif prefer == "high" then
+        local start = math.max(0, math.floor(n * 0.5))
+        index = math.random(start, n - 1)
+    else
+        index = math.random(0, n - 1)
+    end
+    if VEHICLE.IS_VEHICLE_MOD_GEN9_EXCLUSIVE(veh, mod_type, index) then
+        if index > 0 then
+            index = index - 1
+        end
+    end
+    return index
+end
+
+local function apply_mod(veh, mod_type, index, custom_tires)
+    if index == nil or index < 0 then
+        VEHICLE.REMOVE_VEHICLE_MOD(veh, mod_type)
+        return
+    end
+    VEHICLE.SET_VEHICLE_MOD(veh, mod_type, index, custom_tires == true)
+end
+
+local function apply_mod_list(veh, types, prefer, custom_tires)
+    for i = 1, #types do
+        apply_mod(veh, types[i], pick_mod(veh, types[i], prefer), custom_tires)
+    end
+end
+
+local function clear_paint(veh)
+    VEHICLE.CLEAR_VEHICLE_CUSTOM_PRIMARY_COLOUR(veh)
+    VEHICLE.CLEAR_VEHICLE_CUSTOM_SECONDARY_COLOUR(veh)
+end
+
+local function apply_indexed_paint(veh, look)
+    clear_paint(veh)
+    VEHICLE.SET_VEHICLE_MOD_COLOR_1(veh, look.paint, look.p, look.pearl)
+    VEHICLE.SET_VEHICLE_MOD_COLOR_2(veh, look.paint, look.s)
+    VEHICLE.SET_VEHICLE_COLOURS(veh, look.p, look.s)
+    VEHICLE.SET_VEHICLE_EXTRA_COLOURS(veh, look.pearl, look.wheel)
+    VEHICLE.SET_VEHICLE_EXTRA_COLOUR_5(veh, look.p)
+    VEHICLE.SET_VEHICLE_EXTRA_COLOUR_6(veh, look.s)
+end
+
+local function apply_custom_paint(veh, rgb, wheel)
+    local r, g, b = clamp_byte(rgb[1]), clamp_byte(rgb[2]), clamp_byte(rgb[3])
+    local dr = clamp_byte(math.floor(r * 0.45))
+    local dg = clamp_byte(math.floor(g * 0.45))
+    local db = clamp_byte(math.floor(b * 0.45))
+    VEHICLE.SET_VEHICLE_CUSTOM_PRIMARY_COLOUR(veh, r, g, b)
+    VEHICLE.SET_VEHICLE_CUSTOM_SECONDARY_COLOUR(veh, dr, dg, db)
+    VEHICLE.SET_VEHICLE_EXTRA_COLOURS(veh, 0, wheel or 0)
+end
+
+local function set_neons(veh, on, r, g, b)
+    for i = 0, 3 do
+        VEHICLE.SET_VEHICLE_NEON_ENABLED(veh, i, on)
+    end
+    if on then
+        VEHICLE.SET_VEHICLE_NEON_COLOUR(veh, r, g, b)
+    end
+end
+
+local function apply_extras(veh, chance)
+    for extra = 0, 20 do
+        if VEHICLE.DOES_EXTRA_EXIST(veh, extra) then
+            -- Native is inverted: true disables the extra.
+            VEHICLE.SET_VEHICLE_EXTRA(veh, extra, math.random() >= chance)
+        end
+    end
+end
+
+local function apply_livery(veh, chance)
+    if math.random() > chance then
+        apply_mod(veh, 48, -1, false)
+        if VEHICLE.GET_VEHICLE_LIVERY_COUNT(veh) > 0 then
+            VEHICLE.SET_VEHICLE_LIVERY(veh, 0)
+        end
+        return
+    end
+    local kit_n = mod_count(veh, 48)
+    local old_n = VEHICLE.GET_VEHICLE_LIVERY_COUNT(veh)
+    if kit_n > 0 then
+        apply_mod(veh, 48, pick_mod(veh, 48, "any"), false)
+    elseif old_n > 1 then
+        VEHICLE.SET_VEHICLE_LIVERY(veh, math.random(0, old_n - 1))
+    end
+    local old2 = VEHICLE.GET_VEHICLE_LIVERY2_COUNT(veh)
+    if old2 > 1 and math.random() < 0.45 then
+        VEHICLE.SET_VEHICLE_LIVERY2(veh, math.random(0, old2 - 1))
+    end
+end
+
+local function apply_wheels(veh, smart)
+    local hash = ENTITY.GET_ENTITY_MODEL(veh)
+    local is_bike = VEHICLE.IS_THIS_MODEL_A_BIKE(hash)
+    local class = VEHICLE.GET_VEHICLE_CLASS(veh)
+    local types
+    if is_bike then
+        types = {6}
+    elseif not smart then
+        types = {0, 1, 2, 3, 4, 5, 7, 8, 9, 11, 12}
+    elseif class == 2 or class == 9 then
+        types = {3, 4}
+    elseif class == 4 then
+        types = {1, 5, 11}
+    elseif class == 7 then
+        types = {0, 7, 11}
+    elseif class == 5 then
+        types = {1, 5, 7}
+    else
+        types = {0, 5, 7, 11, 12}
+    end
+
+    VEHICLE.SET_VEHICLE_WHEEL_TYPE(veh, pick_one(types))
+    local n = mod_count(veh, 23)
+    if n < 1 then
+        for i = 1, #types do
+            VEHICLE.SET_VEHICLE_WHEEL_TYPE(veh, types[i])
+            n = mod_count(veh, 23)
+            if n > 0 then
+                break
+            end
+        end
+    end
+    local prefer = smart and "high" or "any"
+    apply_mod(veh, 23, pick_mod(veh, 23, prefer), true)
+    if is_bike then
+        apply_mod(veh, 24, pick_mod(veh, 24, prefer), true)
+    end
+end
+
+local function apply_stance(veh, smart)
+    local class = VEHICLE.GET_VEHICLE_CLASS(veh)
+    local n = mod_count(veh, 15)
+    if n < 1 then
+        return
+    end
+    if not smart then
+        apply_mod(veh, 15, pick_mod(veh, 15, "any"), false)
+        return
+    end
+    -- Street / sport / muscle / coupe get slammed. SUVs and off-road stay a bit higher.
+    if class == 2 or class == 9 then
+        apply_mod(veh, 15, math.max(0, math.floor((n - 1) * 0.5)), false)
+    else
+        apply_mod(veh, 15, n - 1, false)
+    end
+end
+
+local function streetish(veh)
+    local class = VEHICLE.GET_VEHICLE_CLASS(veh)
+    if class >= 0 and class <= 7 then
+        return true
+    end
+    local name = model_name_from_hash(ENTITY.GET_ENTITY_MODEL(veh))
+    return name ~= nil and is_drift_model_name(name)
+end
+
+local function apply_random_appearance(veh)
+    ensure_mod_kit(veh)
+    apply_mod_list(veh, BODY_MODS, "any", false)
+    apply_mod_list(veh, COSMETIC_MODS, "any", false)
+    apply_stance(veh, false)
+    apply_wheels(veh, false)
+    apply_livery(veh, 0.85)
+    apply_extras(veh, 0.5)
+
+    local roll = math.random()
+    if roll < 0.45 then
+        apply_indexed_paint(veh, {
+            paint = math.random(0, 5),
+            p = math.random(0, 159),
+            s = math.random(0, 159),
+            pearl = math.random(0, 159),
+            wheel = math.random(0, 159),
+        })
+    elseif roll < 0.75 then
+        local c = math.random(0, 159)
+        apply_indexed_paint(veh, {
+            paint = math.random(0, 3),
+            p = c,
+            s = math.random() < 0.5 and c or math.random(0, 159),
+            pearl = math.random(0, 159),
+            wheel = math.random(0, 159),
+        })
+    else
+        apply_custom_paint(veh, pick_one(STREET_PAINT), math.random(0, 159))
+    end
+
+    VEHICLE.SET_VEHICLE_WINDOW_TINT(veh, math.random(0, 6))
+    VEHICLE.SET_VEHICLE_NUMBER_PLATE_TEXT_INDEX(veh, math.random(0, 5))
+    VEHICLE.SET_VEHICLE_DIRT_LEVEL(veh, math.random() * 12.0)
+    VEHICLE.TOGGLE_VEHICLE_MOD(veh, 22, true)
+    VEHICLE.SET_VEHICLE_XENON_LIGHT_COLOR_INDEX(veh, math.random(0, 12))
+    VEHICLE.TOGGLE_VEHICLE_MOD(veh, 20, true)
+    VEHICLE.SET_VEHICLE_TYRE_SMOKE_COLOR(veh, math.random(0, 255), math.random(0, 255), math.random(0, 255))
+    if math.random() < 0.55 then
+        set_neons(veh, true, math.random(0, 255), math.random(0, 255), math.random(0, 255))
+    else
+        set_neons(veh, false, 0, 0, 0)
+    end
+end
+
+local function apply_spec_appearance(veh)
+    ensure_mod_kit(veh)
+    apply_mod_list(veh, BODY_MODS, "high", false)
+    apply_mod_list(veh, COSMETIC_MODS, "high", false)
+    apply_stance(veh, true)
+    apply_wheels(veh, true)
+    VEHICLE.REMOVE_VEHICLE_MOD(veh, 38)
+
+    local class = VEHICLE.GET_VEHICLE_CLASS(veh)
+    local name = model_name_from_hash(ENTITY.GET_ENTITY_MODEL(veh)) or ""
+    local livery_chance = 0.15
+    if is_drift_model_name(name) then
+        livery_chance = 0.80
+    elseif class == 4 or class == 6 then
+        livery_chance = 0.70
+    elseif class == 0 or class == 1 or class == 3 or class == 5 then
+        livery_chance = 0.55
+    elseif class == 7 then
+        livery_chance = 0.20
+    elseif streetish(veh) then
+        livery_chance = 0.45
+    end
+    apply_livery(veh, livery_chance)
+    apply_extras(veh, 0.72)
+
+    local look = pick_one(SPEC_LOOKS)
+    if math.random() < 0.22 then
+        local rgb = pick_one(STREET_PAINT)
+        apply_custom_paint(veh, rgb, look.wheel)
+        look = {
+            paint = 1,
+            p = look.p,
+            s = look.s,
+            pearl = 0,
+            wheel = look.wheel,
+            xenon = look.xenon,
+            tint = look.tint,
+            smoke = {rgb[1], rgb[2], rgb[3]},
+        }
+    else
+        apply_indexed_paint(veh, look)
+    end
+
+    VEHICLE.SET_VEHICLE_WINDOW_TINT(veh, look.tint)
+    VEHICLE.SET_VEHICLE_NUMBER_PLATE_TEXT_INDEX(veh, pick_one({0, 1, 4, 5}))
+    VEHICLE.SET_VEHICLE_DIRT_LEVEL(veh, math.random() < 0.8 and (math.random() * 1.2) or (math.random() * 3.5))
+    VEHICLE.TOGGLE_VEHICLE_MOD(veh, 22, true)
+    VEHICLE.SET_VEHICLE_XENON_LIGHT_COLOR_INDEX(veh, look.xenon)
+    VEHICLE.TOGGLE_VEHICLE_MOD(veh, 20, true)
+    VEHICLE.SET_VEHICLE_TYRE_SMOKE_COLOR(veh, look.smoke[1], look.smoke[2], look.smoke[3])
+    if livery_chance >= 0.70 and math.random() < 0.25 then
+        set_neons(veh, true, look.smoke[1], look.smoke[2], look.smoke[3])
+    else
+        set_neons(veh, false, 0, 0, 0)
+    end
+end
+
+local function restyle_current(smart)
+    local veh = current_car()
+    if veh == 0 then
+        util.toast("Get in a car first")
+        return
+    end
+    if smart then
+        apply_spec_appearance(veh)
+        util.toast("Spec appearance applied")
+    else
+        apply_random_appearance(veh)
+        util.toast("Appearance randomized")
+    end
+end
+
+--==============================================================================
 -- MENU
 --==============================================================================
 
 -- BEGIN VEHICLE
-local vehicle_root = menu.list(root, "Vehicle", {"mptvehicle"}, "Cars you are driving, plus spawners.")
+local vehicle_root = menu.list(root, "Vehicle", {"mptvehicle"}, "Vehicle Options")
 
-menu.action(vehicle_root, "Make this car drift", {"mptdrift"}, "Must be sitting in a car. If it has an LS Car Meet / Chop Shop drift model, you get that car. If not, drift tires go on the one you are in.", function()
+menu.action(vehicle_root, "Make this car drift", {"mptdrift"}, "Make any car Drift-tuned. Must be sitting in a car. If it has an LS Car Meet / Chop Shop drift model, you get that car. If not, drift tires go on the one you are in.", function()
     make_current_car_drift()
 end)
 
-local spawner_root = menu.list(vehicle_root, "Spawner", {"mptspawner"}, "Park cars in front of you.")
-
-menu.action(spawner_root, "Spawn 5 cars", {"mptspawn5"}, "Replaces the last lineup with 5 random DLC / GTA Online cars.", function()
-    spawn_lineup(5)
+menu.action(vehicle_root, "Randomize appearance", {"mptrandlook"}, "Must be sitting in a car. Random paint, mods, wheels, tint, extras, livery, neons. Chaos on purpose.", function()
+    restyle_current(false)
 end)
 
-local drift_list_root = menu.list(spawner_root, "Drift cars", {"mptdriftcars"}, "Every drift model this game build can spawn.")
+menu.action(vehicle_root, "Spec appearance", {"mptspeclook"}, "Must be sitting in a car. Matching colours, nicer rims, lowered on street cars, fuller body kits, livery more often on sport / muscle / drift.", function()
+    restyle_current(true)
+end)
 
-menu.action(spawner_root, "Clear lineup", {"mptclearspot"}, "Deletes cars this spawner created.", function()
-    clear_spawned()
-    util.toast("Lineup cleared")
+local spawner_root = menu.list(vehicle_root, "Spawner", {"mptspawner"}, "Spawn cars in front of you.")
+
+menu.action(spawner_root, "Spawn 5 cars", {"mptspawn5"}, "Parks 5 random DLC / GTA Online cars. Replaces cars if you press more than once, but If you sat in one or drove it off 5meters or more, it stays.", function()
+    spawn_spot_lineup(5)
+end)
+
+menu.action(spawner_root, "Spawn 5 cars DRIFT", {"mptspawndrift5"}, "Same as Spawn 5 cars, but LS Car Meet / Chop Shop drift models only. Drift tires already on aswell.", function()
+    spawn_drift_lineup(5)
+end)
+
+local drift_list_root = menu.list(spawner_root, "Drift cars", {"mptdriftcars"}, "List of Every drift model this game build can spawn.")
+
+menu.action(spawner_root, "Clear lineup", {"mptclearspot"}, "Deletes cars still sitting in the last row. Cars you took stay in the world.", function()
+    local kept = clear_sitting_lineup()
+    if kept > 0 then
+        util.toast("Lineup cleared — left " .. tostring(kept) .. " you took")
+    else
+        util.toast("Lineup cleared")
+    end
 end)
 -- END VEHICLE
+
+--==============================================================================
+-- WORLD (thin Stand wrappers)
+--==============================================================================
+
+-- Clock hours. Afternoon is 15 so it stays distinct from dusk.
+local CLOCK_PRESETS = {
+    {"Morning", "mpttimemorning", 6, false},
+    {"Mid day", "mpttimemidday", 12, false},
+    {"Afternoon", "mpttimeafternoon", 15, false},
+    {"Dusk", "mpttimedusk", 19, false},
+    {"Night", "mpttimenight", 22, false},
+    {"Pitch black", "mpttimepitch", 0, true},
+}
+
+local WEATHER_SET = {
+    {"normal", "Don't Override"},
+    {"extrasunny", "Extra Sunny"},
+    {"clear", "Clear"},
+    {"clouds", "Clouds"},
+    {"smog", "Smog"},
+    {"foggy", "Foggy"},
+    {"overcast", "Overcast"},
+    {"rain", "Rain"},
+    {"thunder", "Thunder"},
+    {"clearing", "Clearing"},
+    {"neutral", "Neutral"},
+    {"snow", "Snow"},
+    {"blizzard", "Blizzard"},
+    {"snowlight", "Snowlight"},
+    {"xmas", "Xmas"},
+    {"halloween", "Clear Halloween"},
+    {"rainhalloween", "Rainy Halloween"},
+    {"snowhalloween", "Snowy Halloween"},
+}
+
+local function stand_run(input)
+    menu.trigger_commands(input)
+end
+
+-- Ignore Stand applying default state on load so the script does not stomp the clock.
+local function user_click(click_type)
+    return click_type ~= CLICK_BULK and click_type ~= CLICK_AUTO
+end
+
+local function set_clock_hour(hour, pitch)
+    stand_run("time " .. tostring(hour))
+    if pitch then
+        stand_run("blackout on")
+        stand_run("locktime on")
+    else
+        stand_run("blackout off")
+    end
+end
+
+-- BEGIN WORLD
+local world_root = menu.list(root, "World", {"mptworld"}, "Clock and weather. Local buttons that fire Stand commands.")
+
+local clock_root = menu.list(world_root, "Clock", {"mptworldclock"}, "Local clock. Presets plus an hour slider.")
+
+for i = 1, #CLOCK_PRESETS do
+    local row = CLOCK_PRESETS[i]
+    local label, cmd, hour, pitch = row[1], row[2], row[3], row[4]
+    local help
+    if pitch then
+        help = "Sets time " .. tostring(hour) .. ", locks the clock, and turns blackout on."
+    else
+        help = "Sets time to " .. tostring(hour) .. ":00. Turns blackout off if pitch black left it on."
+    end
+    menu.action(clock_root, label, {cmd}, help, function()
+        set_clock_hour(hour, pitch)
+        util.toast("Clock: " .. label)
+    end)
+end
+
+menu.slider(clock_root, "Hour", {"mptclockhour"}, "Fires Stand time. Scroll or press Enter and type 0-23.", 0, 23, 12, 1, function(value, _prev, click_type)
+    if user_click(click_type) then
+        stand_run("time " .. tostring(value))
+    end
+end)
+
+menu.toggle(clock_root, "Lock time", {"mptlocktime"}, "Fires stand locktime. Stops the clock from advancing.", function(on, click_type)
+    if user_click(click_type) then
+        stand_run(on and "locktime on" or "locktime off")
+    end
+end, false)
+
+menu.toggle(clock_root, "Smooth transition", {"mpttimesmooth"}, "Fires timesmoothing.", function(on, click_type)
+    if user_click(click_type) then
+        stand_run(on and "timesmoothing on" or "timesmoothing off")
+    end
+end, false)
+
+menu.slider(clock_root, "Clock speed", {"mptclockspeed"}, "Fires clockspeed. 1 is slowest. Vanilla-ish is low. High values rip through the day.", 1, 3999, 1, 1, function(value, _prev, click_type)
+    if user_click(click_type) then
+        stand_run("clockspeed " .. tostring(value))
+    end
+end)
+
+menu.toggle(clock_root, "Use system time", {"mptsystime"}, "Fires systime. Uses your PC clock.", function(on, click_type)
+    if user_click(click_type) then
+        stand_run(on and "systime on" or "systime off")
+    end
+end, false)
+
+local weather_root = menu.list(world_root, "Weather", {"mptworldweather"}, "Local weather. Same values as Stand Atmosphere, without leaving this script.")
+
+local weather_options = {}
+for i = 1, #WEATHER_SET do
+    weather_options[i] = {i, WEATHER_SET[i][2]}
+end
+
+menu.list_action(weather_root, "Set weather", {"mptsetweather"}, "Fires Stand's weather command.", weather_options, function(value)
+    local row = WEATHER_SET[value]
+    if row then
+        stand_run("weather " .. row[1])
+        util.toast("Weather: " .. row[2])
+    end
+end)
+
+local CLOUD_SET = {
+    {"normal", "Don't Override"},
+    {"altostratus", "Altostratus"},
+    {"cirrus", "Cirrus"},
+    {"cirrocumulus", "Cirrocumulus"},
+    {"clear 01", "Clear 01"},
+    {"cloudy 01", "Cloudy 01"},
+    {"cloudy 02", "Cloudy 02"},
+    {"contrails", "Contrails"},
+    {"horizon", "Horizon"},
+    {"horizonband1", "Horizon Band 1"},
+    {"horizonband2", "Horizon Band 2"},
+    {"horizonband3", "Horizon Band 3"},
+    {"nimbus", "Nimbus"},
+    {"puffs", "Puffs"},
+    {"rain", "Rain"},
+    {"shower", "Shower"},
+    {"snowy 01", "Snowy 01"},
+    {"stormy 01", "Stormy 01"},
+    {"stratocumulus", "Stratocumulus"},
+    {"stripey", "Stripey"},
+    {"wispy", "Wispy"},
+}
+
+local cloud_options = {}
+for i = 1, #CLOUD_SET do
+    cloud_options[i] = {i, CLOUD_SET[i][2]}
+end
+
+menu.list_action(weather_root, "Clouds", {"mptclouds"}, "Fires Stand's clouds command.", cloud_options, function(value)
+    local row = CLOUD_SET[value]
+    if row then
+        stand_run("clouds " .. row[1])
+        util.toast("Clouds: " .. row[2])
+    end
+end)
+
+menu.toggle(weather_root, "Disable skybox", {"mptnosky"}, "Fires nosky.", function(on, click_type)
+    if user_click(click_type) then
+        stand_run(on and "nosky on" or "nosky off")
+    end
+end, false)
+
+menu.list_select(weather_root, "Blackout", {"mptblackout"}, "Fires blackout. Pitch black preset uses Enabled.", {
+    {1, "Disabled"},
+    {2, "Enabled"},
+    {3, "Enabled, Including Vehicles"},
+}, 1, function(value, _name, _prev, click_type)
+    if not user_click(click_type) then
+        return
+    end
+    if value == 1 then
+        stand_run("blackout off")
+    elseif value == 2 then
+        stand_run("blackout on")
+    else
+        stand_run("blackout vehicles")
+    end
+end)
+-- END WORLD
+
+--==============================================================================
+-- GRAPHIC FIX
+--==============================================================================
+
+local gfx = {
+    enabled = false,
+    look = 1,
+    lod = 1.00,
+    sharp_distance = false,
+    better_shadows = false,
+    hd_models = false,
+}
+
+local GFX_LOOK_SHADER = {
+    "off",
+    "intnofog",
+    "ng_filmic01",
+}
+
+local function gfx_apply_look(name)
+    stand_run("shader " .. name)
+end
+
+local function gfx_apply_lod(scale)
+    stand_run("lodscale " .. string.format("%.2f", scale))
+end
+
+local function gfx_restore()
+    gfx_apply_look("off")
+    gfx_apply_lod(1.00)
+    GRAPHICS.CLEAR_TIMECYCLE_MODIFIER()
+    GRAPHICS.CASCADE_SHADOWS_CLEAR_SHADOW_SAMPLE_TYPE()
+    STREAMING.SET_REDUCE_PED_MODEL_BUDGET(true)
+    STREAMING.SET_REDUCE_VEHICLE_MODEL_BUDGET(true)
+end
+
+-- BEGIN GRAPHIC FIX
+local gfx_root = menu.list(root, "Graphic FIX", {"graphicfix"}, "Renderer tweaks. All options start off.")
+
+menu.toggle(gfx_root, "Enable", {"graphicfixon"}, "Master switch. Turn this on first, then turn on the options you want.", function(on)
+    gfx.enabled = on
+    if on then
+        gfx_apply_look(GFX_LOOK_SHADER[gfx.look])
+        gfx_apply_lod(gfx.lod)
+        if gfx.hd_models then
+            STREAMING.SET_REDUCE_PED_MODEL_BUDGET(false)
+            STREAMING.SET_REDUCE_VEHICLE_MODEL_BUDGET(false)
+        end
+    else
+        gfx_restore()
+    end
+end, false)
+
+menu.list_select(gfx_root, "Look", {"graphicfixstyle"}, "Off is default. Clear sky is intnofog looks the best. Filmic is a strong Rockstar filter.", {
+    {1, "Off"},
+    {2, "Clear sky"},
+    {3, "Filmic"},
+}, 1, function(value)
+    gfx.look = value
+    if gfx.enabled then
+        gfx_apply_look(GFX_LOOK_SHADER[value])
+    end
+end)
+
+menu.slider(gfx_root, "LOD", {"graphicfixlod"}, "Real LOD scale. 100 is vanilla. 200-300 is the usual upgrade. Above 200 already costs FPS on a lot of PCs. 1000 is extreme.", 100, 1000, 100, 25, function(value)
+    gfx.lod = value / 100.0
+    if gfx.enabled then
+        gfx_apply_lod(gfx.lod)
+    end
+end)
+
+menu.toggle(gfx_root, "Sharper distance", {"graphicfixsharp"}, "Cuts the game's distance blur so far trees and buildings stay crisp.", function(on)
+    gfx.sharp_distance = on
+end, false)
+
+menu.toggle(gfx_root, "Better shadows", {"graphicfixshadows"}, "Longer, cleaner cascade shadows. Costs FPS at night and in the city.", function(on)
+    gfx.better_shadows = on
+    if not on then
+        GRAPHICS.CASCADE_SHADOWS_CLEAR_SHADOW_SAMPLE_TYPE()
+    end
+end, false)
+
+menu.toggle(gfx_root, "Keep HD models loaded", {"graphicfixhd"}, "Stops the game from swapping people and cars to low-detail models as soon.", function(on)
+    gfx.hd_models = on
+    if gfx.enabled then
+        STREAMING.SET_REDUCE_PED_MODEL_BUDGET(not on)
+        STREAMING.SET_REDUCE_VEHICLE_MODEL_BUDGET(not on)
+    end
+end, false)
+
+menu.action(gfx_root, "Turn off Lance God graphics", {"graphicfixfixlance"}, "Sets shader off and lodscale 1, then re-applies this tree if Enable is on.", function()
+    stand_run("shader off")
+    stand_run("lodscale 1.00")
+    if gfx.enabled then
+        gfx_apply_look(GFX_LOOK_SHADER[gfx.look])
+        gfx_apply_lod(gfx.lod)
+    end
+    util.toast("Lance God graphics cleared")
+end)
+-- END GRAPHIC FIX
+
+util.create_tick_handler(function()
+    if not gfx.enabled then
+        return true
+    end
+    STREAMING.OVERRIDE_LODSCALE_THIS_FRAME(gfx.lod)
+    if gfx.sharp_distance then
+        GRAPHICS.SET_DISTANCE_BLUR_STRENGTH_OVERRIDE(0.0)
+    end
+    if gfx.better_shadows then
+        GRAPHICS.CASCADE_SHADOWS_ENABLE_ENTITY_TRACKER(true)
+        GRAPHICS.CASCADE_SHADOWS_SET_CASCADE_BOUNDS_SCALE(1.15)
+        GRAPHICS.CASCADE_SHADOWS_SET_ENTITY_TRACKER_SCALE(10.0)
+        GRAPHICS.CASCADE_SHADOWS_SET_AIRCRAFT_MODE(true)
+        GRAPHICS.CASCADE_SHADOWS_SET_DYNAMIC_DEPTH_MODE(true)
+        GRAPHICS.CASCADE_SHADOWS_SET_DYNAMIC_DEPTH_VALUE(5.0)
+        GRAPHICS.CASCADE_SHADOWS_SET_SHADOW_SAMPLE_TYPE("dither_4x4")
+    end
+    if gfx.hd_models then
+        STREAMING.SET_REDUCE_PED_MODEL_BUDGET(false)
+        STREAMING.SET_REDUCE_VEHICLE_MODEL_BUDGET(false)
+    end
+    return true
+end)
 
 local function fill_drift_menu()
     if #drift_catalog == 0 then
@@ -646,6 +1369,7 @@ end
 util.on_pre_stop(function()
     -- Leave spawned cars in the world. Clear lineup is the delete button.
     release_spawned()
+    gfx_restore()
 end)
 
 build_spot_pool()
