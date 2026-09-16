@@ -1,8 +1,10 @@
 <p align="center">
   <img src="misc/james_hex.webp" alt="james head kirka" width="96">
+  <img src="misc/NapIcon.png" alt="Nap Client" width="96">
 </p>
 
-This repo is compiled assets i use for kirka.io and other games, i didnot create a lot of the content inside of this, they are all copied from discord, and other websites. just putting them here for permalinks and also storage.
+
+This repo is for assets in dev, stuff i use for games, and for permalinks. and also a lot of the content inside of [this](https://github.com/nnapkin12/napkin-theme-assets/tree/main/Kirka%Map%20Textures), and some of [these](https://github.com/nnapkin12/napkin-theme-assets/tree/main/Kirka%Scripts), are copied from discord, and other websites.
 
 
 ## [GTA V Related/Mods](https://github.com/nnapkin12/napkin-theme-assets/blob/main/GTA%20V/GTAVstuff.md)
