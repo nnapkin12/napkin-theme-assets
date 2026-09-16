@@ -6,6 +6,9 @@
 
 This repo is for assets in dev, stuff i use for games, and for permalinks. and also a lot of the content inside of [this](https://github.com/nnapkin12/napkin-theme-assets/tree/main/Kirka%Map%20Textures), and some of [these](https://github.com/nnapkin12/napkin-theme-assets/tree/main/Kirka%Scripts), are copied from discord, and other websites.
 
+## [NAP Client + Launcher](https://github.com/nnapkin12/napkin-theme-assets/tree/main/Kirka%20Client-Launcher)
+
+Unofficial kirka.io client. Linux AppImages are on [Releases](https://github.com/nnapkin12/napkin-theme-assets/releases) (too big to keep in the git repo).
 
 ## [GTA V Related/Mods](https://github.com/nnapkin12/napkin-theme-assets/blob/main/GTA%20V/GTAVstuff.md)
 
