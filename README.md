@@ -1,14 +1,15 @@
 <p align="center">
-  <img src="misc/james_hex.webp" alt="james head kirka" width="96">
-  <img src="misc/NapIcon.png" alt="Nap Client" width="96">
+  <a href="https://github.com/nnapkin12/napkin-theme-assets/releases">
+    <img src="misc/NapIcon.png" alt="Nap Client" width="96">
+  </a>
 </p>
 
 
 This repo is for assets in dev, stuff i use for games, and for permalinks. and also a lot of the content inside of [this](https://github.com/nnapkin12/napkin-theme-assets/tree/main/Kirka%Map%20Textures), and some of [these](https://github.com/nnapkin12/napkin-theme-assets/tree/main/Kirka%Scripts), are copied from discord, and other websites.
 
-## [NAP Client + Launcher](https://github.com/nnapkin12/napkin-theme-assets/tree/main/Kirka%20Client-Launcher)
+## NAP Client + Launcher
 
-Unofficial kirka.io client. Linux AppImages are on [Releases](https://github.com/nnapkin12/napkin-theme-assets/releases) (too big to keep in the git repo).
+Unofficial kirka.io client+launcher. Linux AppImages. [Releases](https://github.com/nnapkin12/napkin-theme-assets/releases).
 
 ## [GTA V Related/Mods](https://github.com/nnapkin12/napkin-theme-assets/blob/main/GTA%20V/GTAVstuff.md)
 
@@ -47,6 +48,9 @@ Create a custom head and body color for your charecter. At the top of the script
 </p>
 
 
+<p align="center">
+  <img src="misc/james_hex.webp" alt="james head kirka" width="96">
+</p>
 
 [Kirka Skin DB](https://github.com/nnapkin12/napkin-theme-assets/blob/main/misc/skins.json):
 Kirka Skin database i update from time to time. useful for asset scripts, CSS previewing skins etc.| contains hashes, texture webps, render webps fallback to https://kirka.lukeskywalk.com . Skin sets organized aswell.
